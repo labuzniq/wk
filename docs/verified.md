@@ -142,3 +142,20 @@ The first real use of `to-tickets` created 16 empty workspaces and no issue. Orc
 - A skill that differs from what the lock file can bring back is moved to `~/.claude/backup/<timestamp>-skills/` before it is installed again.
 - No patch ships yet: check V11 found no skill or agent that needs one. The tests apply a patch to a stand-in skill and a stand-in agent.
 - `wk skills-sync` and `wk agents-sync` are tested with stand-ins for `npx` and for the upstream repo, not against the network.
+
+## Worktree cleanup (2026-11-23)
+
+Orca 1.4.271. Nothing was removed on this Mac for these checks: `orca workspace cleanup run` was not run, and `wk worktree-cleanup` ran only in the tests, against a stand-in for `orca`.
+
+- docs: Orca has its own cleanup (`orca workspace cleanup preview`, `run`, `report`). Its rules "are set in Orca settings; these commands never change them" (`--help`).
+- confirmed: no cleanup rule is on here. `preview --json` gives every worktree `evaluation: {action: "keep", cause: "rules-off"}` (main checkouts: `not-removable`), and `report --json` gives `runs: []`, `nextRunAt: null`.
+- open: whether an Orca rule can say "branch merged and card completed for 14 days, keep the branch, keep a worktree with uncommitted or untracked files". The CLI (Command Line Interface) does not print the rules or their options, and no file under `~/Library/Application Support/orca/` names them. It needs a look in the Orca settings window. Until then the kit holds the rule itself, in `wk worktree-cleanup`; leave Orca's own rules off so that only one thing removes worktrees.
+- confirmed: `orca worktree list --json` gives no time at which a card became completed. A card has `createdAt`, `lastActivityAt` and `workspaceStatus` only. `wk worktree-cleanup` therefore writes down the time it first sees a card completed (`~/.local/state/workspace-kit/completed/`), and counts the 14 days from there. That time is never earlier than the real one, so a worktree is never removed too soon; with a daily run it is at most one day late. It covers a card completed by `wk board-sync`, by the agent or by hand.
+- confirmed: a card has an `instanceId` next to its `id`. The `id` is `<repoId>::<path>`, so a new worktree at the same path gets the same `id`; the noted time is filed under `instanceId`. Open: that a new worktree at an old path gets a new `instanceId` was not tested. If it does not, the time is still dropped on the first run that sees the new card not completed.
+- confirmed: `orca worktree list --repo path:<primary checkout> --limit <n> --json` lists one project's worktrees, and says `truncated: true` when the limit cut the list.
+- confirmed: a failed Orca call with `--json` exits 1 and prints `{"ok": false, "error": {"message": ...}}` on standard output. Seen with `orca worktree rm --worktree current --json`, which Orca always refuses.
+- docs: `orca worktree rm` without `--delete-branch` keeps the local branch, and without `--force` forces nothing (`--help`). `wk worktree-cleanup` passes neither flag.
+- open: whether the card stays on the board after `orca worktree rm`. The ticket asks for it. Testing it means removing a real worktree, which was not done. There is no `orca worktree archive` command.
+- open: whether the precheck of an automation runs with `orca`, `jq`, `gh` and `git` on `PATH`. If it does not, the precheck fails, the run shows as `skipped_precheck` in `orca automations runs`, and nothing is removed. The automation was created only against the stand-in.
+- "Merged" is checked as: the worktree's newest commit is reachable from the card's base ref, or `gh pr view <branch>` says `MERGED` with that same commit as its head. A squash merge is therefore seen only through GitHub; a GitLab squash merge is not seen and the worktree stays.
+- `git worktree remove`, which Orca calls, deletes ignored files (such as `.env` or `node_modules`) together with the folder. Only uncommitted and untracked files keep a worktree.

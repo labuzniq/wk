@@ -25,4 +25,4 @@ Load the `orca-cli` skill before any command below. The repo id is `orca_repo_id
   follow-ups: <short items found later, if any>
   ```
 
-- **Finish**: the pull request (GitLab: merge request) body says `Closes #<number>`, so the merge closes the ticket; a local ticket file is closed by hand as described above. `wk board-sync` moves the workspace to `completed`. Removing the workspace is the user's call.
+- **Finish**: the pull request (GitLab: merge request) body says `Closes #<number>`, so the merge closes the ticket; a local ticket file is closed by hand as described above. `wk board-sync` moves the workspace to `completed`. Do not remove the workspace yourself: the daily `Worktree cleanup` automation removes it once its branch is merged and its card has been completed for 14 days, and keeps the branch.

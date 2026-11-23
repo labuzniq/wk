@@ -28,7 +28,7 @@ snapshot() {
   is "$(head -1 docs/agents/issue-tracker.md)" "# stand-in issue-tracker-local"
   grep -qx 'slug = "demo"' .workspace-kit.toml
   grep -qx 'orca_repo_id = "repo-1"' .workspace-kit.toml
-  is "$(jq -r '.[].name' "$ORCA_STUB/automations.json" | sort | paste -sd, -)" "Wiki ingest: demo,Wiki lint: demo"
+  is "$(jq -r '.[].name' "$ORCA_STUB/automations.json" | sort | paste -sd, -)" "Wiki ingest: demo,Wiki lint: demo,Worktree cleanup: demo"
 }
 
 @test "a second run changes nothing" {

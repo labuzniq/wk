@@ -29,7 +29,7 @@
   | merged or finished | `completed` |
 
 - Update the card comment at every checkpoint: a slice finished, a hypothesis confirmed or refuted, a review done, a blocker hit. Read it first with `orca worktree current --json` and keep any goal or constraint I wrote. Line 1: what happened and what is next. Line 2: `goal: …`.
-- Remove a worktree only when I ask.
+- Never remove a worktree yourself unless I ask. The daily `Worktree cleanup` automation runs `wk worktree-cleanup`, which removes a worktree when its branch is merged, its card has been completed for 14 days and it holds no uncommitted or untracked files; the branch stays. The one exception: a worktree Claude Code made for a subagent is removed with its branch as soon as the subagent ends, when it holds no changes and no commits (`hooks/worktree-remove.sh`).
 
 ## Git
 - Default: a branch in an Orca worktree, then a pull request.
