@@ -98,6 +98,7 @@ Order: `kit-test-harness` and `proof-first-review` can start at once. Every othe
 - A comment on an issue appears on the workspace card once, with its author.
 - A completed card is never moved back by an issue being reopened.
 - No network call is added to a hook that runs in every session, and a failed tracker call never blocks or changes the board.
+- A project with local ticket files has no issue to follow; there the ticket is closed by hand.
 
 **Blocked by:** `kit-test-harness`
 
@@ -196,7 +197,7 @@ Order: `kit-test-harness` and `proof-first-review` can start at once. Every othe
 
 ## codex-support
 
-**What to build:** A card can be worked by Claude Code or by Codex. Codex gets the same global instructions and skills, the same hooks where Codex has them, and its sessions are captured into the wiki.
+**What to build:** A ticket can be worked by Claude Code or by Codex. Codex gets the same global instructions and skills, the same hooks where Codex has them, and its sessions are captured into the wiki.
 
 **Acceptance criteria**
 
