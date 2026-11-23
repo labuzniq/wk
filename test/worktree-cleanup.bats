@@ -282,11 +282,11 @@ not_removed() {
 @test "the doctor reports a project that has no cleanup automation, and wk adopt fixes it" {
   mkdir "$HOME/projects/new" && cd "$HOME/projects/new"
   "$kit/libexec/wk-adopt" > /dev/null
-  rm -r "$state/automations"
+  for marker in "$state/automations"/*; do : > "$marker"; done # the empty marker an older kit left
   jq 'map(select(.name | startswith("Worktree cleanup") | not))' "$ORCA_STUB/automations.json" > "$ORCA_STUB/automations.json.new"
   mv "$ORCA_STUB/automations.json.new" "$ORCA_STUB/automations.json"
   run "$kit/bin/wk" doctor
-  [[ "$output" == *"cleanup_automation: no daily worktree cleanup automation for this project; run \`wk adopt\`"* ]]
+  [[ "$output" == *"cleanup_automation: no daily worktree cleanup automation for this project; run \`wk adopt\` in $HOME/projects/new"* ]]
   "$kit/libexec/wk-adopt" > /dev/null
   is "$(jq -r '.[].name' "$ORCA_STUB/automations.json" | grep -c "^Worktree cleanup: new$")" 1
   run "$kit/bin/wk" doctor
