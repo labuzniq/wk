@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Stand-in for the Orca CLI in tests. Logs each call to $ORCA_STUB/calls and answers from the files in $ORCA_STUB.
+set -euo pipefail
+printf '%s\n' "$*" >> "$ORCA_STUB/calls"
+
+case "$1 ${2:-}" in
+  "status --json") [ ! -f "$ORCA_STUB/down" ] ;;
+  "worktree current") cat "$ORCA_STUB/current.json" ;;
+  "worktree list") cat "$ORCA_STUB/list.json" ;;
+  "worktree set" | "repo set-base-ref") ;;
+  "repo list") jq -c '{result: {repos: .}}' "$ORCA_STUB/repos.json" ;;
+  "repo add")
+    jq -c --arg path "$4" '. + [{id: "repo-\(length + 1)", path: $path}]' "$ORCA_STUB/repos.json" > "$ORCA_STUB/repos.json.new"
+    mv "$ORCA_STUB/repos.json.new" "$ORCA_STUB/repos.json"
+    jq -c '{result: {repo: .[-1]}}' "$ORCA_STUB/repos.json"
+    ;;
+  "automations list") jq -c '{result: {automations: .}}' "$ORCA_STUB/automations.json" ;;
+  "automations create")
+    jq -c --arg name "$4" '. + [{name: $name}]' "$ORCA_STUB/automations.json" > "$ORCA_STUB/automations.json.new"
+    mv "$ORCA_STUB/automations.json.new" "$ORCA_STUB/automations.json"
+    ;;
+  *) echo "orca stand-in: no answer for '$*'; add it to test/stubs/orca" >&2; exit 64 ;;
+esac

@@ -1,0 +1,5 @@
+# `# shellcheck source=` paths are relative to the script that holds them.
+source-path=SCRIPTDIR
+external-sources=true
+# Messages for the agent hold `backticks` in single quotes on purpose.
+disable=SC2016

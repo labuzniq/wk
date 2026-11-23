@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 WK_CONFIG="$HOME/.config/workspace-kit/config.toml"
 
 wk_config() {

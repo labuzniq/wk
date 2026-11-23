@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Prints one line per capsule gap: "<check_id>: <what is missing>". Prints nothing when the capsule is complete.
 set -euo pipefail
+# shellcheck source=../lib/project.sh
 . "$(dirname "$0")/../lib/project.sh" || exit 0
+# shellcheck source=../lib/config.sh
 . "$(dirname "$0")/../lib/config.sh"
 
 [ -f "$manifest" ] || { echo "manifest: no .workspace-kit.toml; run \`wk adopt\`"; exit 0; }
@@ -40,6 +42,7 @@ fi
 [ -f "$(vault_dir)/wiki/overview.md" ] || gap vault_page "no $(manifest_value vault)/wiki/overview.md in the vault; run \`wk adopt\`"
 
 for skill in "$HOME/.agents/skills"/*/; do
+  [ -d "$skill" ] || continue
   [ -e "$HOME/.claude/skills/$(basename "$skill")/SKILL.md" ] || { gap skills_visible "$(basename "$skill") is not visible to Claude Code; re-run install.sh"; break; }
 done
 
@@ -49,4 +52,4 @@ actual=$(cd "$HOME/.claude/agents/ecc" 2>/dev/null && shasum -a 256 -- *.md | se
 [ "$expected" = "$actual" ] || gap agents "installed ECC agents differ from agents.lock; run \`wk agents-sync\`"
 
 proposals=$(ls "$(vault_dir)/wiki/_proposals"/*.md 2>/dev/null || true)
-[ -z "$proposals" ] || gap proposals "needs the user: show each pending proposal and ask apply or reject: $(echo $proposals)"
+[ -z "$proposals" ] || gap proposals "needs the user: show each pending proposal and ask apply or reject: ${proposals//$'\n'/ }"

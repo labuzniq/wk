@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Runs every check of the kit: shell lint, Python lint, then the tests. Contributors and CI run this one command.
+set -uo pipefail
+cd "$(dirname "$0")/.." || exit 1
+
+need() { command -v "$1" >/dev/null || { echo "check: '$1' is not installed; install it with \`$2\`" >&2; exit 1; }; }
+need shellcheck "brew install shellcheck"
+need bats "brew install bats-core"
+need jq "brew install jq"
+need uv "brew install uv"
+
+# Scripts have no file extension, so they are found by their first line.
+starting_with() {
+  git ls-files -co --exclude-standard | while read -r file; do
+    if [ -f "$file" ] && head -1 "$file" | grep -q "$1"; then echo "$file"; fi
+  done
+}
+
+failed=()
+check() {
+  local name="$1" hint="$2"
+  shift 2
+  echo "== $name"
+  "$@" || { failed+=("$name"); echo "check: $name failed. $hint" >&2; }
+}
+
+shell_lint() { starting_with '^#!/usr/bin/env bash\|^# shellcheck shell=bash' | xargs shellcheck; }
+python_lint() { starting_with '^#!/usr/bin/env -S uv run --script' | xargs uvx ruff@0.17.6 check; }
+
+check "shell lint" "Each finding above names the file, the line and a wiki page with the fix." shell_lint
+check "python lint" "Each finding above names the file and the line; \`uvx ruff@0.17.6 check --fix <file>\` fixes what it can." python_lint
+check "tests" "Each 'not ok' line above names the behaviour that broke; run one file with \`bats test/<name>.bats\`." bats test
+
+[ ${#failed[@]} -eq 0 ] || { echo "check: failed: ${failed[*]}" >&2; exit 1; }
+echo "check: all passed"

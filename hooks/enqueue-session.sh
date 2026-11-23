@@ -4,6 +4,7 @@ kit="$(dirname "$0")/.."
 input=$(cat)
 session_id=$(jq -r '.session_id' <<<"$input")
 cd "$(jq -r '.cwd' <<<"$input")" 2>/dev/null || exit 0
+# shellcheck source=../lib/project.sh
 . "$kit/lib/project.sh" || exit 0
 [ -f "$manifest" ] || exit 0
 [ ! -f "$state_dir/sessions/no-capture/$session_id" ] || exit 0
