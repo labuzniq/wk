@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Runs every check of the kit: shell lint, Python lint, then the tests. Contributors and CI (Continuous Integration) run this one command.
+set -uo pipefail
+cd "$(dirname "$0")/.." || exit 1
+
+need() { command -v "$1" >/dev/null || { echo "check: '$1' is not installed; install it with \`$2\`" >&2; exit 1; }; }
+need shellcheck "brew install shellcheck"
+need bats "brew install bats-core"
+need jq "brew install jq"
+need uv "brew install uv"
+
+# Scripts have no file extension, so they are found by their first line.
+starting_with() {
+  git ls-files -co --exclude-standard | while read -r file; do
+    if [ -f "$file" ] && head -1 "$file" | grep -Eq "$1"; then echo "$file"; fi
+  done
+}
+
+failed=()
+check() {
+  local name="$1" hint="$2"
+  shift 2
+  echo "== $name"
+  "$@" || { failed+=("$name"); echo "check: $name failed. $hint" >&2; }
+}
+
+ruff=0.17.6
+linted='^#!/usr/bin/env (bash|bats|-S uv run --script)$|^# shellcheck shell=bash'
+
+# lint <first-line pattern> <tool> [args]: run the tool on every script that starts with the pattern.
+lint() {
+  local pattern="$1" files
+  shift
+  files=$(starting_with "$pattern")
+  [ -n "$files" ] || { echo "no file starts with '$pattern'; the finder in test/run is broken" >&2; return 1; }
+  echo "$files" | xargs "$@"
+}
+
+# A script with a first line the two lint steps do not know would be skipped without a word.
+every_script_is_linted() {
+  local stray
+  stray=$( { starting_with '^#!'; git ls-files -co --exclude-standard '*.py' '*.sh'; } | sort -u | while read -r file; do
+    head -1 "$file" | grep -Eq "$linted" || echo "$file"
+  done)
+  [ -z "$stray" ] || { echo "$stray"; return 1; }
+}
+
+check "every script is linted" "The files above start with a line test/run does not know. Start them like their neighbours, or teach test/run the new kind." \
+  every_script_is_linted
+check "shell lint" "Each finding above names the file, the line and a wiki page with the fix." \
+  lint '^#!/usr/bin/env (bash|bats)$|^# shellcheck shell=bash' shellcheck
+check "python lint" "Each finding above names the file and the line; \`uvx ruff@$ruff check --fix <file>\` fixes what it can." \
+  lint '^#!/usr/bin/env -S uv run --script$' uvx "ruff@$ruff" check
+check "tests" "Each 'not ok' line above names the behaviour that broke and what the test got; run one file with \`bats test/<name>.bats\`." \
+  bats test
+
+[ ${#failed[@]} -eq 0 ] || { echo "check: failed: ${failed[*]}" >&2; exit 1; }
+echo "check: all passed"

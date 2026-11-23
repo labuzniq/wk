@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# shellcheck source=../lib/config.sh
 . "$(dirname "$0")/../lib/config.sh"
 name="${1:?usage: wk new <name> [--type code|research] [--stack python,ts,swift] [--with <agent>]...}"
 shift

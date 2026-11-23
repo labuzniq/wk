@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Stand-in for gh in tests. Logs each call to $GH_STUB/calls. `gh pr view` answers from $GH_STUB/pr.json; no such file means no pull request.
+set -euo pipefail
+printf '%s\n' "$*" >> "$GH_STUB/calls"
+
+case "$1 ${2:-}" in
+  "pr view")
+    [ "${4:-} ${5:-} ${6:-}" = "--json state,reviewDecision --jq" ] || { echo "gh stand-in: unexpected call '$*'; teach test/stubs/gh the new form" >&2; exit 64; }
+    jq -r "$7" "$GH_STUB/pr.json"
+    ;;
+  *) echo "gh stand-in: no answer for '$*'; add it to test/stubs/gh" >&2; exit 64 ;;
+esac

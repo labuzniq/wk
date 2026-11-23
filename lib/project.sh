@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2034 # the variables are for the script that sources this
 # Sourced by scripts that run inside a project. Sets root, primary, manifest; returns 1 outside a git repo.
 root=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
 primary=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
