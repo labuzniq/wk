@@ -5,6 +5,8 @@ set -euo pipefail
 . "$(dirname "$0")/../lib/project.sh" || exit 0
 # shellcheck source=../lib/config.sh
 . "$(dirname "$0")/../lib/config.sh"
+# shellcheck source=../lib/checksum.sh
+. "$(dirname "$0")/../lib/checksum.sh"
 
 [ -f "$manifest" ] || { echo "manifest: no .workspace-kit.toml; run \`wk adopt\`"; exit 0; }
 
@@ -45,6 +47,12 @@ for skill in "$HOME/.agents/skills"/*/; do
   [ -d "$skill" ] || continue
   [ -e "$HOME/.claude/skills/$(basename "$skill")/SKILL.md" ] || { gap skills_visible "$(basename "$skill") is not visible to Claude Code; re-run install.sh"; break; }
 done
+
+skills_lock="$(wk_config kit)/skills.lock"
+locked_skills=$(jq -r '.skills | keys[]' "$skills_lock" | tr '\n' ' ')
+# shellcheck disable=SC2086 # one skill name per word
+[ -z "$locked_skills" ] || [ "$(skills_sha256 $locked_skills)" = "$(jq -r '.installed_sha256' "$skills_lock")" ] \
+  || gap skills "installed skills differ from skills.lock; run \`wk skills-sync\`"
 
 lock="$(wk_config kit)/agents/agents.lock"
 expected=$(jq -r '.agents | to_entries[] | .value.installed_sha256 + "  " + .key' "$lock" | sort)

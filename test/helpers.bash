@@ -1,6 +1,8 @@
 # shellcheck shell=bash disable=SC2034 # the variables are for the test files that load this
 # Shared setup for the kit's tests: a throwaway HOME that looks like an installed kit, with stand-ins for orca and gh on PATH.
 kit="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+# shellcheck source=../lib/checksum.sh
+. "$kit/lib/checksum.sh"
 
 setup_home() {
   # uv keeps its cache and its Python under HOME; point it at the real ones so a test never downloads.
@@ -12,14 +14,14 @@ setup_home() {
 
   HOME="$(cd "$BATS_TEST_TMPDIR" && pwd -P)/home"
   export HOME GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL="$HOME/.gitconfig"
-  export ORCA_STUB="$HOME/orca-stub" GH_STUB="$HOME/gh-stub"
+  export ORCA_STUB="$HOME/orca-stub" GH_STUB="$HOME/gh-stub" NPX_STUB="$HOME/npx-stub"
   export PATH="$kit/test/stubs:$PATH"
   state="$HOME/.local/state/workspace-kit"
 
-  mkdir -p "$HOME/.config/workspace-kit" "$HOME/projects" "$ORCA_STUB" "$GH_STUB"
+  mkdir -p "$HOME/.config/workspace-kit" "$HOME/projects" "$ORCA_STUB" "$GH_STUB" "$NPX_STUB"
   echo '[]' > "$ORCA_STUB/repos.json"
   echo '[]' > "$ORCA_STUB/automations.json"
-  touch "$ORCA_STUB/calls" "$GH_STUB/calls"
+  touch "$ORCA_STUB/calls" "$GH_STUB/calls" "$NPX_STUB/calls"
   printf '[user]\n  name = Test\n  email = test@example.com\n[init]\n  defaultBranch = main\n' > "$HOME/.gitconfig"
   printf 'projects_root = "%s"\nkit = "%s"\n' "$HOME/projects" "$HOME/kit" > "$HOME/.config/workspace-kit/config.toml"
 
@@ -37,6 +39,8 @@ setup_home() {
     echo "# stand-in $doc" > "$matt/$doc.md"
   done
   ln -s "$matt" "$HOME/.claude/skills/setup-matt-pocock-skills"
+  jq -n --arg sha "$(skills_sha256 setup-matt-pocock-skills)" \
+    '{installed_sha256: $sha, skills: {"setup-matt-pocock-skills": {}}}' > "$HOME/kit/skills.lock"
 }
 
 # new_repo <path>: a git repo with one commit on main.

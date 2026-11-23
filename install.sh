@@ -46,11 +46,7 @@ fi
 mkdir -p "$claude_dir/skills"
 installed() { [ -e "$HOME/.agents/skills/$1/SKILL.md" ]; }
 
-while read -r package skills; do
-  missing=()
-  for skill in $skills; do installed "$skill" || missing+=(-s "$skill"); done
-  [ ${#missing[@]} -eq 0 ] || npx --yes skills add "$package" -g -a universal -a claude-code "${missing[@]}" -y < /dev/null
-done < "$kit/skills.txt"
+"$kit/bin/wk" skills-sync
 
 missing=()
 for skill in orca-cli orca-computer-use orchestration; do installed "$skill" || missing+=(--skill "$skill"); done

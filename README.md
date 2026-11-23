@@ -26,7 +26,7 @@ git clone https://github.com/labuzniq/wk ~/.workspace-kit
 
 The argument is the folder your projects live in. The installer can be run again at any time; a second run changes nothing.
 
-**It changes your Claude Code setup.** It replaces `~/.claude/CLAUDE.md` with a link to [`claude/CLAUDE.md`](claude/CLAUDE.md), merges hooks and permission rules into `~/.claude/settings.json`, installs the skills in [`skills.txt`](skills.txt) and the agents in [`agents/agents.toml`](agents/agents.toml). Both files are backed up to `~/.claude/backup/<timestamp>/` first. Read `claude/CLAUDE.md` and make it yours before installing.
+**It changes your Claude Code setup.** It replaces `~/.claude/CLAUDE.md` with a link to [`claude/CLAUDE.md`](claude/CLAUDE.md), merges hooks and permission rules into `~/.claude/settings.json`, installs the skills in [`skills.txt`](skills.txt) at their pinned commits and the agents in [`agents/agents.toml`](agents/agents.toml). Both files are backed up to `~/.claude/backup/<timestamp>/` first. Read `claude/CLAUDE.md` and make it yours before installing.
 
 Then do the three manual Orca settings in [`docs/orca-settings.md`](docs/orca-settings.md).
 
@@ -38,7 +38,8 @@ Then do the three manual Orca settings in [`docs/orca-settings.md`](docs/orca-se
 | `wk adopt` | Add the capsule to the repo or folder you are in; keeps existing files |
 | `wk doctor` | Print one line per missing piece of the capsule |
 | `wk board-sync [--repo]` | Move Orca cards forward from git and pull request state |
-| `wk agents-sync` | Install the pinned ECC agents |
+| `wk agents-sync` | Install the pinned ECC agents, with their recorded patches |
+| `wk skills-sync` | Install the pinned third-party skills, with their recorded patches |
 | `wk transcript <file>` | Print what was said in a Claude Code transcript |
 
 ## Checking the kit
@@ -57,6 +58,8 @@ claude/          global CLAUDE.md, settings fragment, merge rules
 hooks/           session-start, stop, session queue, worktree create and remove
 bin/wk           the CLI; commands live in libexec/
 agents/          which ECC agents, the pinned commit, the lock file
+skills.txt       which third-party skills and their pinned commits; skills.lock is the lock file
+patches/         recorded patches for third-party skills and agents
 skills/          project-setup, wiki-ingest, wiki-lint
 templates/       project capsule, vault skeleton, Orca workspace rules for the tracker doc
 test/            `test/run`, the tests, and stand-ins for orca and gh
@@ -79,7 +82,8 @@ knowledge-base/       the vault: raw/ sources and wiki/ pages
 
 - If Orca is not running, Claude Code cannot create worktrees: the kit routes them through Orca on purpose and has no fallback.
 - The wiki automation commits changes under `knowledge-base/` onto the branch the primary checkout is on, and does not push.
-- Third-party skills and agents are never edited. They are installed from their own repos; this repo holds none of their text.
+- Third-party skills and agents are installed from their own repos, each pinned to one commit: skills in `skills.txt` (`owner/repo#<commit>`), agents in `agents/agents.toml`. This repo holds none of their text.
+- When a skill or an agent does not fit this setup, it carries a recorded patch: `patches/skills/<name>.patch` or `patches/agents/<name>.patch`, a unified diff with `a/` and `b/` path prefixes (for a skill, paths inside its folder; for an agent, `<name>.md`). `wk skills-sync` and `wk agents-sync` apply it after install. `skills.lock` and `agents/agents.lock` record the checksum before and after, and `wk doctor` reports an install that differs. A patch that no longer applies stops the sync and names the skill or agent.
 
 ## License
 

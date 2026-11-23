@@ -1,0 +1,173 @@
+{
+  "installed_sha256": "e05018f12d6b1026d8388c2ce31fe976176ab31f8851dfb28687609395c66acf",
+  "skills": {
+    "vision": {
+      "source": "kunchenguid/vision",
+      "commit": "acf4d656188e55ce9633774e4d0c848e9ae49a02",
+      "upstream_sha256": "1560bf80ad94b97cb539ff05abf54a7560277e9ce12d9df6d71dcdf9f6702a7b",
+      "installed_sha256": "1560bf80ad94b97cb539ff05abf54a7560277e9ce12d9df6d71dcdf9f6702a7b"
+    },
+    "ask-matt": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "73bb7848031dc3386c445c0d2bfe99244ca1a108561674cced7274fc1025aaf6",
+      "installed_sha256": "73bb7848031dc3386c445c0d2bfe99244ca1a108561674cced7274fc1025aaf6"
+    },
+    "code-review": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "3790b93b011d985e0f12576376fe5d2071cf4467cb0ecd27597d8b3e9bb48ba9",
+      "installed_sha256": "3790b93b011d985e0f12576376fe5d2071cf4467cb0ecd27597d8b3e9bb48ba9"
+    },
+    "codebase-design": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "33655da8d86c68a414a1557b2659390259c497f62d1d21e5c3eba7caebec6e1e",
+      "installed_sha256": "33655da8d86c68a414a1557b2659390259c497f62d1d21e5c3eba7caebec6e1e"
+    },
+    "diagnosing-bugs": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "f10b605670137b7df5e0e7cd0824df11701f77638ead397529cc5ea100557205",
+      "installed_sha256": "f10b605670137b7df5e0e7cd0824df11701f77638ead397529cc5ea100557205"
+    },
+    "domain-modeling": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "6d4b3a2a093e6fe18d34b34682df27f4708d5114ed150ca2d6eb02cc7d453e4c",
+      "installed_sha256": "6d4b3a2a093e6fe18d34b34682df27f4708d5114ed150ca2d6eb02cc7d453e4c"
+    },
+    "grill-me": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "1c953598c5fa8d124b8ebc17cb5e201f24961d355d8368180e4ea8b5398ddeb9",
+      "installed_sha256": "1c953598c5fa8d124b8ebc17cb5e201f24961d355d8368180e4ea8b5398ddeb9"
+    },
+    "grill-with-docs": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "8ef4be74962b9520429041dc863da52454092abe388b5198318d94377a6bce2f",
+      "installed_sha256": "8ef4be74962b9520429041dc863da52454092abe388b5198318d94377a6bce2f"
+    },
+    "grilling": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "2365aea4578dbb2d9b3c5668d5456cb59bb9dce7fd4f049ecd5773be516915ca",
+      "installed_sha256": "2365aea4578dbb2d9b3c5668d5456cb59bb9dce7fd4f049ecd5773be516915ca"
+    },
+    "handoff": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "8fb9fb30afa37307822a73f32c0dd03e68b146a2da11cf94dbfa648f13ecd9e5",
+      "installed_sha256": "8fb9fb30afa37307822a73f32c0dd03e68b146a2da11cf94dbfa648f13ecd9e5"
+    },
+    "implement": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "a24ed3c5055ef710ef964e74a8cb8fd92dba080fb9ed3ec1f450f573b6a7c359",
+      "installed_sha256": "a24ed3c5055ef710ef964e74a8cb8fd92dba080fb9ed3ec1f450f573b6a7c359"
+    },
+    "implement-spec": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "7c6580ac1cd0b1ec2a171d71d38373c0cd6d104b29610746c4a8ae43ae99fba1",
+      "installed_sha256": "7c6580ac1cd0b1ec2a171d71d38373c0cd6d104b29610746c4a8ae43ae99fba1"
+    },
+    "improve-codebase-architecture": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "6d9d0d2d7851b714bd2cdd0b3408b58bf5bcd90746256aa5b19250d8a77397fe",
+      "installed_sha256": "6d9d0d2d7851b714bd2cdd0b3408b58bf5bcd90746256aa5b19250d8a77397fe"
+    },
+    "pr": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "21b946c16276712a8a870e8dd190ede094e77a0cebfd7699c3204809d4b53357",
+      "installed_sha256": "21b946c16276712a8a870e8dd190ede094e77a0cebfd7699c3204809d4b53357"
+    },
+    "prototype": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "be3cf55f8db012db15191915d105238afd9773564066759f440f0a35a4a0762e",
+      "installed_sha256": "be3cf55f8db012db15191915d105238afd9773564066759f440f0a35a4a0762e"
+    },
+    "research": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "edef94a6b87a13a9abe8a125819e33155d196b365f213c833de493ec24c4857f",
+      "installed_sha256": "edef94a6b87a13a9abe8a125819e33155d196b365f213c833de493ec24c4857f"
+    },
+    "retro": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "515c7c7d873cc58a0db42b698c99b215d000d2be5ed02f0078226f9cf23e72fd",
+      "installed_sha256": "515c7c7d873cc58a0db42b698c99b215d000d2be5ed02f0078226f9cf23e72fd"
+    },
+    "setup-matt-pocock-skills": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "784965c7b20535c46b3862e32997226d3030a0cc7c310f974f2156853145ec08",
+      "installed_sha256": "784965c7b20535c46b3862e32997226d3030a0cc7c310f974f2156853145ec08"
+    },
+    "tdd": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "e2188f792887d8be89edad58043158fb3d182250c626c9a64b860defd25d7a6c",
+      "installed_sha256": "e2188f792887d8be89edad58043158fb3d182250c626c9a64b860defd25d7a6c"
+    },
+    "teach": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "7616271ab6744944458490e4fc68cf46e4f2ad58d4fdec2d631fa59a164e481b",
+      "installed_sha256": "7616271ab6744944458490e4fc68cf46e4f2ad58d4fdec2d631fa59a164e481b"
+    },
+    "to-questionnaire": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "b9858a78fab71561e4082190b8e02d568265426996634fa4fa53fbe506b076ed",
+      "installed_sha256": "b9858a78fab71561e4082190b8e02d568265426996634fa4fa53fbe506b076ed"
+    },
+    "to-spec": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "0bc241b347def8ae746b6b9799eaf10238fc55f6b31a343c781d37881ee4b107",
+      "installed_sha256": "0bc241b347def8ae746b6b9799eaf10238fc55f6b31a343c781d37881ee4b107"
+    },
+    "to-tickets": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "66008eb0b4a8dbfd07ccf747b937a102f0d0cb93cf9755e08dc952bd1f737251",
+      "installed_sha256": "66008eb0b4a8dbfd07ccf747b937a102f0d0cb93cf9755e08dc952bd1f737251"
+    },
+    "triage": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "1e32577e23727153995284f1ad825e06dd674512ff78e0201a7dfe76e749f019",
+      "installed_sha256": "1e32577e23727153995284f1ad825e06dd674512ff78e0201a7dfe76e749f019"
+    },
+    "wait-what": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "865614d721fa3e99ce44a0f10daeb63a6238efc6aa821c0e25fd28d824d6c6cf",
+      "installed_sha256": "865614d721fa3e99ce44a0f10daeb63a6238efc6aa821c0e25fd28d824d6c6cf"
+    },
+    "wayfinder": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "8a24931daecc2ebe032b1f883493c2a87d3776e1e6663b8a0e00463b80c138d8",
+      "installed_sha256": "8a24931daecc2ebe032b1f883493c2a87d3776e1e6663b8a0e00463b80c138d8"
+    },
+    "wizard": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "897aa802a27d3614ca54466fc75c0653f9f2b08573d51a157abcb10bf7f7e18a",
+      "installed_sha256": "897aa802a27d3614ca54466fc75c0653f9f2b08573d51a157abcb10bf7f7e18a"
+    },
+    "writing-for-agents": {
+      "source": "mattpocock/skills",
+      "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "upstream_sha256": "3528f1535d7eaa55d9f884c3b49f566a21d1154fcb5fdeb12ed03fb3769c9c51",
+      "installed_sha256": "3528f1535d7eaa55d9f884c3b49f566a21d1154fcb5fdeb12ed03fb3769c9c51"
+    }
+  }
+}

@@ -129,3 +129,13 @@ The first real use of `to-tickets` created 16 empty workspaces and no issue. Orc
 - Found by the tests: on a machine without `~/.agents/skills`, the doctor reported `skills_visible: * is not visible to Claude Code`. Fixed.
 - Stock macOS has bash 3.2, which has no `mapfile`; the kit's scripts stay within bash 3.2.
 - CI runs on a macOS runner, because the scripts use the macOS form of `stat` (`stat -f %m`).
+
+## Recorded patches and skill pins (2026-11-23)
+
+- confirmed: `npx skills add owner/repo#<commit>` installs the skill as it was at that commit. Tested in a sandbox home with an older commit of `mattpocock/skills`; the files differed from the newest ones and `.skill-lock.json` recorded the older commit.
+- confirmed: installing a skill again replaces its folder, so hand edits and files added by hand are gone.
+- confirmed: asking for a skill the package does not hold exits 0 and installs nothing. `wk skills-sync` therefore checks that the folder exists.
+- confirmed: `skills.lock` was written from a sandbox home, and the 28 skills installed on this Mac have the same checksum.
+- confirmed: the doctor's new `skills` check takes about 0.03 seconds for 28 skills.
+- No patch ships yet: check V11 found no skill or agent that needs one. The tests apply a patch to a stand-in skill and a stand-in agent.
+- `wk skills-sync` and `wk agents-sync` are tested with stand-ins for `npx` and for the upstream repo, not against the network.

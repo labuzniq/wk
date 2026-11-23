@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Stand-in for `npx skills add` in tests. Logs each call to $NPX_STUB/calls and copies each asked skill
+# from $NPX_STUB/<package>/<skill> into ~/.agents/skills, replacing the folder that is there, and links it into ~/.claude/skills.
+set -euo pipefail
+printf '%s\n' "$*" >> "$NPX_STUB/calls"
+[ "$1 $2 $3" = "--yes skills add" ] || { echo "npx stand-in: no answer for '$*'; add it to test/stubs/npx" >&2; exit 64; }
+package="$4"
+shift 4
+
+while [ $# -gt 0 ]; do
+  if [ "$1" = -s ] && [ -d "$NPX_STUB/$package/$2" ]; then
+    mkdir -p "$HOME/.agents/skills"
+    rm -rf "$HOME/.agents/skills/$2"
+    cp -R "$NPX_STUB/$package/$2" "$HOME/.agents/skills/$2"
+    mkdir -p "$HOME/.claude/skills"
+    ln -sfn "$HOME/.agents/skills/$2" "$HOME/.claude/skills/$2"
+  fi
+  shift
+done

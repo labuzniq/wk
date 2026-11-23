@@ -1,2 +1,2 @@
-kunchenguid/vision vision
-mattpocock/skills ask-matt code-review codebase-design diagnosing-bugs domain-modeling grill-me grill-with-docs grilling handoff implement implement-spec improve-codebase-architecture pr prototype research retro setup-matt-pocock-skills tdd teach to-questionnaire to-spec to-tickets triage wait-what wayfinder wizard writing-for-agents
+kunchenguid/vision#acf4d656188e55ce9633774e4d0c848e9ae49a02 vision
+mattpocock/skills#abeeaf95660ba9e8b7c753eb38f441ca707a8823 ask-matt code-review codebase-design diagnosing-bugs domain-modeling grill-me grill-with-docs grilling handoff implement implement-spec improve-codebase-architecture pr prototype research retro setup-matt-pocock-skills tdd teach to-questionnaire to-spec to-tickets triage wait-what wayfinder wizard writing-for-agents
