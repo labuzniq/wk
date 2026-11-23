@@ -21,11 +21,11 @@ AGENT_SKILLS_BLOCK = """
 
 ### Issue tracker
 
-Tickets are Orca workspace cards; specs live in `docs/specs/`. See `docs/agents/issue-tracker.md`.
+Tickets are issues in the tracker named in `docs/agents/issue-tracker.md`; specs live in `docs/specs/`. An Orca workspace is created when work on a ticket starts, never to hold a ticket.
 
 ### Triage labels
 
-The five default triage roles, recorded on the card comment. See `docs/agents/triage-labels.md`.
+The five default triage roles, as labels on the ticket. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
@@ -83,9 +83,15 @@ def mise_toml(slug: str, stacks: list[str], root: Path) -> str:
 ORCA_YAML = "scripts:\n  setup: |\n    mise trust -y && mise run setup\n"
 
 
+def tracker_kind(root: Path) -> str:
+    remotes = run("git", "-C", str(root), "remote", "-v")
+    return next((kind for kind in ("github", "gitlab") if kind in remotes), "local")
+
+
 def tracker_config(root: Path) -> None:
     agents_dir = root / "docs/agents"
-    write_new(agents_dir / "issue-tracker.md", (KIT / "templates/orca-tracker.md").read_text())
+    tracker = (MATT_SETUP / f"issue-tracker-{tracker_kind(root)}.md").read_text()
+    write_new(agents_dir / "issue-tracker.md", tracker.rstrip("\n") + "\n" + (KIT / "templates/orca-workspaces.md").read_text())
     for seed in ("triage-labels.md", "domain.md"):
         write_new(agents_dir / seed, (MATT_SETUP / seed).read_text())
     claude_md = root / "CLAUDE.md"

@@ -18,7 +18,8 @@
 ## Orca owns worktrees and tasks
 - Load the `orca-cli` skill before any worktree, terminal, browser or board operation.
 - Create every worktree through Orca. Never run `git worktree add`; never use `.claude/worktrees`.
-- One task = one Orca workspace card. The Workspace Board is the only task list; TODO lists stay out of files, docs and the vault.
+- A ticket is an issue in the project's tracker (`docs/agents/issue-tracker.md`). A workspace is where one ticket is worked on: create it when work on the ticket starts, linked to its issue, never to hold a ticket for later.
+- The tracker and the Workspace Board are the only task lists; TODO lists stay out of files, docs and the vault.
 - Keep the card status true:
 
   | Event | Status |
