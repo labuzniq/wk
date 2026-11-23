@@ -83,7 +83,7 @@ knowledge-base/       the vault: raw/ sources and wiki/ pages
 - If Orca is not running, Claude Code cannot create worktrees: the kit routes them through Orca on purpose and has no fallback.
 - The wiki automation commits changes under `knowledge-base/` onto the branch the primary checkout is on, and does not push.
 - Third-party skills and agents are installed from their own repos, each pinned to one commit: skills in `skills.txt` (`owner/repo#<commit>`), agents in `agents/agents.toml`. This repo holds none of their text.
-- When a skill or an agent does not fit this setup, it carries a recorded patch: `patches/skills/<name>.patch` or `patches/agents/<name>.patch`, a unified diff with `a/` and `b/` path prefixes (for a skill, paths inside its folder; for an agent, `<name>.md`). `wk skills-sync` and `wk agents-sync` apply it after install. `skills.lock` and `agents/agents.lock` record the checksum before and after, and `wk doctor` reports an install that differs. A patch that no longer applies stops the sync and names the skill or agent.
+- When a skill or an agent does not fit this setup, it carries a recorded patch: `patches/skills/<name>.patch` or `patches/agents/<name>.patch`, a unified diff with `a/` and `b/` path prefixes (for a skill, paths inside its folder; for an agent, `<name>.md`). `wk skills-sync` and `wk agents-sync` apply it after install. `skills.lock` and `agents/agents.lock` record the checksum before and after, and `wk doctor` reports an install that differs. A patch that no longer applies stops the sync and names the skill or agent. A skill you edited by hand is moved to `~/.claude/backup/` before the pinned one replaces it.
 
 ## License
 

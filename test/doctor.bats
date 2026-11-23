@@ -132,6 +132,11 @@ gaps() {
   is "$(gaps)" "skills"
 }
 
+@test "a missing skills.lock is a gap, and the other checks still run" {
+  rm "$HOME/kit/skills.lock" CLAUDE.md
+  is "$(gaps)" "claude_md skills"
+}
+
 @test "an installed agent that differs from the lock file is a gap" {
   echo "edited" >> "$HOME/.claude/agents/ecc/reviewer.md"
   is "$(gaps)" "agents"

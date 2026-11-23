@@ -3,7 +3,7 @@
 # from $NPX_STUB/<package>/<skill> into ~/.agents/skills, replacing the folder that is there, and links it into ~/.claude/skills.
 set -euo pipefail
 printf '%s\n' "$*" >> "$NPX_STUB/calls"
-[ "$1 $2 $3" = "--yes skills add" ] || { echo "npx stand-in: no answer for '$*'; add it to test/stubs/npx" >&2; exit 64; }
+[ "$1 $2 $3" = "--yes skills@1.9.0 add" ] && [ "${*: -1}" = -y ] || { echo "npx stand-in: no answer for '$*'; add it to test/stubs/npx" >&2; exit 64; }
 package="$4"
 shift 4
 
