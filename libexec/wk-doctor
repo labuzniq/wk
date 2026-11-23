@@ -8,7 +8,16 @@ set -euo pipefail
 # shellcheck source=../lib/checksum.sh
 . "$(dirname "$0")/../lib/checksum.sh"
 
-[ -f "$manifest" ] || { echo "manifest: no .workspace-kit.toml; run \`wk adopt\`"; exit 0; }
+if [ ! -f "$manifest" ]; then
+  if [ -f "$state_dir/capsule-pr/$(path_key "$primary")" ]; then
+    echo "manifest: the capsule is offered as $(sed -n 2p "$state_dir/capsule-pr/$(path_key "$primary")"); nothing to fix until that pull request is merged"
+  elif [ ! -f "$state_dir/declined/$(path_key "$primary")" ]; then
+    echo "manifest: no .workspace-kit.toml; run \`wk adopt\`"
+  fi
+  exit 0
+fi
+# A capsule that is still on its branch, waiting for the merge, has nothing to fix yet.
+[ "$root" = "$primary" ] || [ -f "$primary/.workspace-kit.toml" ] || exit 0
 
 skipped() { awk '/^\[skip\]/{s=1;next} /^\[/{s=0} s' "$manifest" | grep -q "^$1 *="; }
 gap() { skipped "$1" || echo "$1: $2"; }

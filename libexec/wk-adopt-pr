@@ -1,54 +1,90 @@
 #!/usr/bin/env bash
 # Offers the capsule to an existing repo as a pull request: the capsule goes on a branch in an Orca worktree, nothing on the default branch.
-# `wk adopt-pr --refresh` asks GitHub what became of that pull request; a closed one is the remembered "no".
+# A run that stopped half way can be run again. `--refresh` asks GitHub what became of the pull request; a closed one is the remembered "no".
+# `--confirmed` offers it in a repo that belongs to someone else; `--decline` remembers a "no" without a pull request.
 set -euo pipefail
 kit="$(dirname "$0")/.."
 # shellcheck source=../lib/project.sh
 . "$kit/lib/project.sh" || { echo "wk adopt-pr: not inside a git repo" >&2; exit 1; }
-offer="$state_dir/capsule-pr/$(path_key "$primary")" # one line: <number> <url> <state>
+offer="$state_dir/capsule-pr/$(path_key "$primary")" # four lines: number, url, state, worktree path
 declined="$state_dir/declined/$(path_key "$primary")"
+name=workspace-kit-capsule
 
-if [ "${1:-}" = --refresh ]; then
-  [ -f "$offer" ] || exit 0
-  read -r number url _ < "$offer"
-  pr_state=$(cd "$primary" && gh pr view "$number" --json state --jq .state 2>/dev/null) || exit 0
-  if [ "$pr_state" = CLOSED ]; then
-    mkdir -p "$(dirname "$declined")"
-    touch "$declined"
-    rm "$offer"
-  else
-    echo "$number $url $pr_state" > "$offer"
-  fi
-  exit 0
-fi
+decline() {
+  mkdir -p "$(dirname "$declined")"
+  touch "$declined"
+  rm -f "$offer"
+}
+
+case "${1:-}" in
+  --decline)
+    decline
+    echo "remembered: no capsule for $primary"
+    exit 0
+    ;;
+  --refresh)
+    [ -f "$offer" ] || exit 0
+    { read -r number && read -r url && read -r _ && read -r worktree; } < "$offer" || exit 0
+    [[ "$number" =~ ^[0-9]+$ ]] || exit 0
+    pr_state=$(cd "$primary" && gh pr view "$number" --json state --jq .state 2>/dev/null) || exit 0
+    case "$pr_state" in
+      CLOSED)
+        decline
+        orca worktree set --worktree "path:$worktree" --workspace-status completed \
+          --comment "Capsule declined: the pull request was closed. It is not offered again." --json >/dev/null 2>&1 || true
+        ;;
+      OPEN | MERGED) printf '%s\n' "$number" "$url" "$pr_state" "$worktree" > "$offer" ;;
+    esac
+    exit 0
+    ;;
+esac
 
 [ ! -f "$primary/.workspace-kit.toml" ] || { echo "wk adopt-pr: this repo already has a capsule; \`wk doctor\` lists what is missing" >&2; exit 1; }
 [ ! -f "$declined" ] || { echo "wk adopt-pr: the capsule was declined for this repo; delete $declined to offer it again" >&2; exit 1; }
 if [ -f "$offer" ]; then
-  echo "already offered: $(cut -d' ' -f2 "$offer")"
+  echo "already offered: $(sed -n 2p "$offer")"
   exit 0
 fi
-git -C "$primary" config --get remote.origin.url | grep -q github \
-  || { echo "wk adopt-pr: origin is not on GitHub, so a pull request is not possible. Ask the user once whether to run \`wk adopt\` here." >&2; exit 1; }
+[[ "$(git -C "$primary" config --get remote.origin.url)" =~ ^(https://|ssh://git@|git@)github\.com[:/] ]] \
+  || { echo "wk adopt-pr: origin is not on github.com, so a pull request is not possible. Ask the user once, yes or no, whether to run \`wk adopt\` here; on no, run \`wk adopt-pr --decline\`." >&2; exit 1; }
 
-repo_id=$(orca repo list --json | jq -r --arg path "$primary" '.result.repos[] | select(.path == $path) | .id')
-[ -n "$repo_id" ] || repo_id=$(orca repo add --path "$primary" --json | jq -r '.result.repo.id')
-worktree=$(cd "$primary" && orca worktree create --repo "id:$repo_id" --name workspace-kit-capsule --no-parent --setup skip \
-  --comment "Capsule offered as a pull request; merge it for yes, close it for no." --json | jq -er '.result.worktree.path')
+# A branch and a pull request appear in the repo without a question, so the repo must be the user's own.
+owner=$(cd "$primary" && gh repo view --json owner --jq .owner.login)
+me=$(gh api user --jq .login)
+if [ "$owner" != "$me" ] && [ "${1:-}" != --confirmed ]; then
+  echo "wk adopt-pr: this repo belongs to $owner, not to $me, so nothing was pushed. Ask the user once, yes or no, whether to offer the capsule there as a pull request. On yes run \`wk adopt-pr --confirmed\`; on no run \`wk adopt-pr --decline\`." >&2
+  exit 3
+fi
+
+worktree=$(git -C "$primary" worktree list --porcelain | sed -n "s|^worktree \(.*/$name\)$|\1|p" | head -1)
+if [ -z "$worktree" ]; then
+  repo_id=$(orca repo list --json | jq -r --arg path "$primary" '.result.repos[] | select(.path == $path) | .id')
+  [ -n "$repo_id" ] || repo_id=$(orca repo add --path "$primary" --json | jq -r '.result.repo.id')
+  worktree=$(cd "$primary" && orca worktree create --repo "id:$repo_id" --name "$name" --no-parent --setup skip \
+    --comment "Capsule offered as a pull request; merge it for yes, close it for no." --json | jq -er '.result.worktree.path')
+fi
 
 cd "$worktree"
 "$kit/libexec/wk-adopt"
 git add -A
-git commit -q -m "chore: add workspace-kit capsule"
+private=$(git diff --cached --name-only | grep -E '^\.claude/|^\.env|^mise\.local\.toml$' || true)
+[ -z "$private" ] || { echo "wk adopt-pr: these files are private and must not be committed; fix .gitignore in $worktree, then run this again: $private" >&2; exit 1; }
+git diff --cached --quiet || git commit -q -m "chore: add workspace-kit capsule"
 git push -q -u origin HEAD
-url=$(gh pr create --title "chore: add workspace-kit capsule" --body "Adds the [workspace-kit](https://github.com/labuzniq/wk) capsule: \`mise.toml\`, \`orca.yaml\`, tracker docs under \`docs/agents/\` and a knowledge vault in \`knowledge-base/\`. Files that were already here are untouched.
+
+url=$(gh pr list --head "$(git branch --show-current)" --state open --json url --jq '.[0].url // ""')
+if [ -z "$url" ]; then
+  url=$(gh pr create --title "chore: add workspace-kit capsule" --body "Adds the [workspace-kit](https://github.com/labuzniq/wk) capsule: \`mise.toml\`, \`orca.yaml\`, tracker docs under \`docs/agents/\` and a knowledge vault in \`knowledge-base/\`. Files that were already here are untouched.
 
 - **Merge** to say yes. The two wiki automations in Orca are created in the next session after the merge.
 - **Close** to say no. The question is not asked again.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)" | tail -1)
-number="${url##*/}"
-orca worktree set --worktree "path:$worktree" --pr "$number" --workspace-status in-review --json >/dev/null
+fi
+[[ "$url" =~ ^https://github\.com/[^/]+/[^/]+/pull/[0-9]+$ ]] \
+  || { echo "wk adopt-pr: gh did not print a pull request URL (got '$url'); the branch is pushed, run this again to open the pull request" >&2; exit 1; }
 mkdir -p "$(dirname "$offer")"
-echo "$number $url OPEN" > "$offer"
+printf '%s\n' "${url##*/}" "$url" OPEN "$worktree" > "$offer"
+orca worktree set --worktree "path:$worktree" --pr "${url##*/}" --workspace-status in-review --json >/dev/null \
+  || echo "wk adopt-pr: the Orca card could not be updated; set it to in-review by hand" >&2
 echo "$url"

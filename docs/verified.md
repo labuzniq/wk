@@ -145,10 +145,12 @@ The first real use of `to-tickets` created 16 empty workspaces and no issue. Orc
 
 ## Capsule by pull request (2026-11-23)
 
-This replaces "in an existing repo with history it asks once" from the change of direction above, for repos whose `origin` is on GitHub. A repo without a GitHub remote is still asked about once.
+This replaces "in an existing repo with history it asks once" from the change of direction above, for repos whose `origin` is on github.com and that belong to the signed-in `gh` user. A repo without a GitHub remote is still asked about once. A repo on GitHub that belongs to someone else (an employer, an open-source project) is asked about once too, because a branch and a pull request there are seen by other people; on yes the agent runs `wk adopt-pr --confirmed`.
 
-- `wk adopt-pr` creates the Orca worktree `workspace-kit-capsule`, runs `wk adopt` in it, pushes the branch and opens the pull request. The offer is remembered in `~/.local/state/workspace-kit/capsule-pr/`.
-- The session-start hook makes no network call: it reads that file and starts `wk adopt-pr --refresh` in the background. A closed pull request becomes a file in `declined/`, the same place an old "no" lives.
-- `wk adopt` in a worktree whose main checkout has no capsule yet creates files only. The Orca automations and the vault permission in the main checkout are created by `wk adopt` there after the merge; the doctor's `automations` gap asks for it. The doctor reads a marker file, not Orca.
-- confirmed with stand-ins for `orca` and `gh` (16 tests). The Orca and gh calls it makes (`orca worktree create --repo --name --no-parent --setup skip --comment --json`, `orca worktree set --pr --workspace-status`, `gh pr create`, `gh pr view --json state`) were each used by hand on this Mac the same day.
+- `wk adopt-pr` creates the Orca worktree `workspace-kit-capsule`, runs `wk adopt` in it, pushes the branch and opens the pull request. A run that stopped half way can be run again: it takes over the worktree, the branch and an open pull request.
+- The offer is remembered in `~/.local/state/workspace-kit/capsule-pr/` (four lines: number, URL, state, worktree path).
+- The session-start hook makes no network call: it reads that file and starts `wk adopt-pr --refresh` in the background. A closed pull request becomes a file in `declined/`, the same place an old "no" lives, and its card is completed.
+- `wk adopt` in a worktree whose main checkout has no capsule yet creates files only. The Orca automations and the vault permission in the main checkout are created by `wk adopt` there after the merge; the doctor's `automations` gap asks for it. The doctor reads a marker file, not Orca. A project adopted before this change shows that gap once, until `wk adopt` writes the marker.
+- Before the merge, Orca already knows the repo (`orca repo add`, `orca repo set-base-ref`): a worktree cannot be created without it.
+- confirmed with stand-ins for `orca` and `gh`. The Orca and gh calls it makes (`orca worktree create --repo --name --no-parent --setup skip --comment --json`, `orca worktree set --pr --workspace-status`, `gh pr create`, `gh pr view --json state`, `gh pr list --head`, `gh repo view --json owner`, `gh api user`) were each used by hand on this Mac the same day or are read in `--help`.
 - open: one whole run of `wk adopt-pr` against a real repo on GitHub.

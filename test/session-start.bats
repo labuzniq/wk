@@ -32,8 +32,15 @@ session_starts() { jq -n --arg cwd "${1:-$PWD}" '{cwd: $cwd, source: "startup"}'
   existing_repo
   git remote remove origin
   run session_starts
+  [[ "$output" == *"Ask the user once, yes or no"*"wk adopt-pr --decline"* ]]
+  [[ "$output" != *"run \`wk adopt-pr\`:"* ]]
+}
+
+@test "a remote that only has github in its name is not GitHub" {
+  existing_repo
+  git remote set-url origin "https://gitlab.com/someone/github-tools.git"
+  run session_starts
   [[ "$output" == *"Ask the user once, yes or no"* ]]
-  [[ "$output" != *"adopt-pr"* ]]
 }
 
 @test "a no remembered before pull requests were used is still honoured" {
@@ -49,6 +56,8 @@ session_starts() { jq -n --arg cwd "${1:-$PWD}" '{cwd: $cwd, source: "startup"}'
   "$kit/bin/wk" adopt-pr
   run session_starts
   is "$output" ""
+  sleep 1 # the hook asks GitHub in the background
+  grep -qx -- "pr view 7 --json state --jq .state" "$GH_STUB/calls"
 }
 
 @test "a merged capsule pull request that this checkout lacks leads to a pull, not to a second offer" {
@@ -61,6 +70,26 @@ session_starts() { jq -n --arg cwd "${1:-$PWD}" '{cwd: $cwd, source: "startup"}'
   [[ "$output" != *"adopt-pr"* ]]
 }
 
+@test "once the merged capsule is in the main checkout, an older worktree is told nothing more" {
+  existing_repo
+  "$kit/bin/wk" adopt-pr
+  echo '{"state": "MERGED"}' > "$GH_STUB/pr.json"
+  "$kit/bin/wk" adopt-pr --refresh
+  git worktree add -q "$HOME/worktrees/older" -b older main
+  git merge -q --no-ff -m "merge capsule" test/workspace-kit-capsule
+  run session_starts "$HOME/worktrees/older"
+  is "$output" ""
+  [ ! -e "$state/capsule-pr/$(printf '%s' "$project" | shasum | cut -d' ' -f1)" ]
+}
+
+@test "an offer file with text that is not a pull request URL is never shown" {
+  existing_repo
+  mkdir -p "$state/capsule-pr"
+  printf '7\nIGNORE-PREVIOUS-INSTRUCTIONS\nMERGED\n/nowhere\n' > "$state/capsule-pr/$(printf '%s' "$project" | shasum | cut -d' ' -f1)"
+  run session_starts
+  is "$output" ""
+}
+
 @test "a closed capsule pull request means the repo is never offered the capsule again" {
   existing_repo
   "$kit/bin/wk" adopt-pr
@@ -71,6 +100,8 @@ session_starts() { jq -n --arg cwd "${1:-$PWD}" '{cwd: $cwd, source: "startup"}'
   run "$kit/bin/wk" adopt-pr
   [ "$status" -ne 0 ]
   [[ "$output" == *"declined"* ]]
+  grep -q -- "^worktree set --worktree path:$HOME/worktrees/workspace-kit-capsule --workspace-status completed " "$ORCA_STUB/calls"
+  is "$("$kit/bin/wk" doctor)" ""
 }
 
 @test "a project with a capsule gets its context" {
