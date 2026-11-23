@@ -31,7 +31,7 @@ completed_days() {
 
 merged() {
   local path="$1" branch="$2" base="$3" head
-  head=$(git -C "$path" rev-parse HEAD)
+  head=$(git -C "$path" rev-parse HEAD 2>/dev/null) || return 1
   if [ "$base" != - ] && git -C "$path" merge-base --is-ancestor "$head" "$base" 2>/dev/null; then return 0; fi
   [ "$(cd "$path" && gh pr view "$branch" --json state,headRefOid --jq '.state + " " + .headRefOid' 2>/dev/null)" = "MERGED $head" ]
 }
@@ -40,7 +40,7 @@ removed=0 kept=0 failed=0
 keep() { kept=$((kept + 1)); echo "kept     $1: $2"; }
 
 check() {
-  local key="$1" id="$2" path="$3" branch="$4" base="$5" status="$6" name="$7" age why into="" out error stamp
+  local key="$1" id="$2" path="$3" branch="$4" base="$5" status="$6" name="$7" age why into="" out error stamp changes
   stamp="$stamps/$(path_key "$key")"
   if [ "$status" != completed ]; then
     rm -f "$stamp"
@@ -51,7 +51,12 @@ check() {
   if [ "$age" -lt "$days" ]; then keep "$name" "completed $age days ago; it is removed after $days days"; return 0; fi
   if [ ! -d "$path" ]; then keep "$name" "its folder $path is missing; remove the card in Orca"; return 0; fi
   if [ "$path" = "$root" ]; then keep "$name" "this command runs inside it; run it from the main checkout"; return 0; fi
-  if [ -n "$(git -C "$path" status --porcelain)" ]; then
+  # git must see the worktree itself: a folder with a broken .git link would be answered by a repo above it, or by none.
+  if [ "$(git -C "$path" rev-parse --show-toplevel 2>/dev/null)" != "$(cd "$path" && pwd -P)" ] || ! changes=$(git -C "$path" status --porcelain 2>/dev/null); then
+    keep "$name" "git cannot read $path; open it and run \`git status\` to see why"
+    return 0
+  fi
+  if [ -n "$changes" ]; then
     keep "$name" "it has uncommitted or untracked files; commit or delete them in $path"
     return 0
   fi
@@ -76,7 +81,10 @@ check() {
   fi
 }
 
-listing=$(orca worktree list --repo "path:$primary" --limit 1000 --json)
+if ! listing=$(orca worktree list --repo "path:$primary" --limit 1000 --json 2>&1) || ! jq -e '.result.worktrees | type == "array"' <<<"$listing" >/dev/null 2>&1; then
+  echo "worktree-cleanup: Orca did not list the worktrees of $primary, so none was checked. Its answer: $listing" >&2
+  exit 1
+fi
 while IFS=$'\t' read -r -u 3 key id path branch base status name; do
   check "$key" "$id" "$path" "$branch" "$base" "$status" "$name"
 done 3< <(jq -r '.result.worktrees[] | select(.isMainWorktree | not)

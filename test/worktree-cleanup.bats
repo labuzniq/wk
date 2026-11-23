@@ -195,6 +195,25 @@ not_removed() {
   [[ "$output" == *"kept     task: its folder $tree is missing"* ]]
 }
 
+@test "a worktree that git cannot read is kept and reported" {
+  cards completed
+  commit
+  merge
+  completed_days_ago 30
+  rm "$tree/.git"
+  run "$kit/bin/wk" worktree-cleanup
+  not_removed
+  [[ "$output" == *"kept     task: git cannot read $tree"* ]]
+}
+
+@test "an answer from Orca that is not a list of worktrees fails the run" {
+  echo '{"ok": false, "error": {"message": "repo_not_found"}}' > "$ORCA_STUB/list.json"
+  run "$kit/bin/wk" worktree-cleanup
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Orca did not list the worktrees of $repo, so none was checked"*"repo_not_found"* ]]
+  [[ "$output" != *"removed 0"* ]]
+}
+
 @test "--dry-run removes nothing and says what would be removed" {
   cards completed
   commit
@@ -258,4 +277,18 @@ not_removed() {
   [[ "$call" == *"--trigger daily"* ]]
   [[ "$call" == *"--precheck cd \"$HOME/projects/new\" && \"$HOME/kit/bin/wk\" worktree-cleanup --dry-run | grep -q \"^would remove\""* ]]
   [[ "$call" == *"--workspace path:$HOME/projects/new"* ]]
+}
+
+@test "the doctor reports a project that has no cleanup automation, and wk adopt fixes it" {
+  mkdir "$HOME/projects/new" && cd "$HOME/projects/new"
+  "$kit/libexec/wk-adopt" > /dev/null
+  rm -r "$state/automations"
+  jq 'map(select(.name | startswith("Worktree cleanup") | not))' "$ORCA_STUB/automations.json" > "$ORCA_STUB/automations.json.new"
+  mv "$ORCA_STUB/automations.json.new" "$ORCA_STUB/automations.json"
+  run "$kit/bin/wk" doctor
+  [[ "$output" == *"cleanup_automation: no daily worktree cleanup automation for this project; run \`wk adopt\`"* ]]
+  "$kit/libexec/wk-adopt" > /dev/null
+  is "$(jq -r '.[].name' "$ORCA_STUB/automations.json" | grep -c "^Worktree cleanup: new$")" 1
+  run "$kit/bin/wk" doctor
+  [[ "$output" != *cleanup_automation* ]]
 }

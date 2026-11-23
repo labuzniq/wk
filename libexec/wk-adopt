@@ -5,6 +5,7 @@
 """Add the project capsule to the git repo in the current directory. Existing files are left untouched."""
 import argparse
 import datetime
+import hashlib
 import json
 import re
 import shutil
@@ -131,7 +132,7 @@ AUTOMATIONS = {
     "Wiki lint: {slug}": ["--trigger", "0 9 * * 6", "--prompt", "Run the wiki-lint skill, then stop."],
     "Worktree cleanup: {slug}": [
         "--trigger", "daily", "--time", "08:00", "--missed-run-grace-minutes", "720",
-        "--precheck", 'cd "{root}" && "{kit}/bin/wk" worktree-cleanup --dry-run | grep -q "^would remove"',
+        "--precheck", 'cd "{root}" && "{kit}/bin/wk" worktree-cleanup --dry-run | grep -q "^would remove"', "--precheck-timeout", "300",
         "--prompt", "Run `wk worktree-cleanup` in this folder once, print its output, then stop. Remove no worktree by hand.",
     ],
 }
@@ -166,6 +167,10 @@ def create_automations(root: Path, vault: Path, slug: str) -> None:
         run("orca", "automations", "create", "--name", name, *flags, "--provider", "claude",
             "--workspace", f"path:{root}", "--fresh-session", "--enabled", "--json")
         print(f"created automation '{name}'")
+    # `wk doctor` makes no Orca call; it reads this list to see that the project has its automations.
+    noted = Path.home() / ".local/state/workspace-kit/automations" / hashlib.sha1(str(root).encode()).hexdigest()
+    noted.parent.mkdir(parents=True, exist_ok=True)
+    noted.write_text("".join(name.format(slug=slug) + "\n" for name in AUTOMATIONS))
 
 
 def allow_vault(settings_file: Path, vault: Path) -> None:
