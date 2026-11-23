@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Prints what was said in a Claude Code transcript: user and assistant text, without tool calls. First line: user turn count.
+set -euo pipefail
+transcript="${1:?usage: wk transcript <transcript.jsonl>}"
+said='select(.type == "user" or .type == "assistant") | select(.isSidechain | not)
+  | {role: .type, text: (.message.content | if type == "string" then . else map(select(.type == "text") | .text) | join("\n") end)}
+  | select(.text != "")'
+echo "user_turns: $(jq -c "$said | select(.role == \"user\")" "$transcript" | wc -l | tr -d ' ')"
+jq -r "$said | \"\n## \(.role)\n\(.text)\"" "$transcript"

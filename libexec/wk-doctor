@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Prints one line per capsule gap: "<check_id>: <what is missing>". Prints nothing when the capsule is complete.
+set -euo pipefail
+. "$(dirname "$0")/../lib/project.sh" || exit 0
+. "$(dirname "$0")/../lib/config.sh"
+
+[ -f "$manifest" ] || { echo "manifest: no .workspace-kit.toml; run \`wk adopt\`"; exit 0; }
+
+skipped() { awk '/^\[skip\]/{s=1;next} /^\[/{s=0} s' "$manifest" | grep -q "^$1 *="; }
+gap() { skipped "$1" || echo "$1: $2"; }
+
+[ -n "$(manifest_value slug)" ] && [ -n "$(manifest_value type)" ] || gap manifest ".workspace-kit.toml lacks slug or type; run \`wk adopt\`"
+[ -f "$root/CLAUDE.md" ] || gap claude_md "no project CLAUDE.md; run \`wk adopt\`, then fill in purpose, commands and gotchas from the repo"
+grep -qs '^\[tasks\.setup\]' "$root/mise.toml" || gap mise "mise.toml has no setup task"
+[ -n "$(manifest_value orca_repo_id)" ] || gap orca_repo "repo is not registered in Orca; run \`wk adopt\`"
+[ -f "$root/orca.yaml" ] && [ -f "$root/.worktreeinclude" ] || gap orca_files "orca.yaml or .worktreeinclude is missing; run \`wk adopt\`"
+grep -qs '^  setup:' "$root/orca.yaml" || gap orca_setup_hook "orca.yaml has no scripts.setup; add \`mise trust -y && mise run setup\`"
+
+vision_file=""
+[ -f "$root/VISION.md" ] && vision_file=VISION.md
+[ -z "$vision_file" ] && grep -qsi '^#.*vision' "$root/STRATEGY.md" && vision_file=STRATEGY.md
+if [ -n "$vision_file" ]; then
+  committed=$(git -C "$root" log -1 --format=%ct -- "$vision_file")
+  if [ -n "$committed" ] && [ $(( ($(date +%s) - committed) / 86400 )) -gt "$(manifest_value refresh_days)" ]; then
+    gap vision_fresh "$vision_file is older than $(manifest_value refresh_days) days; needs the user: after their request is handled, offer to refresh it with the \`vision\` skill"
+  fi
+else
+  commits=$(git -C "$root" rev-list --count HEAD)
+  marker="$state_dir/vision-deferred/$(path_key "$primary")"
+  if [ "$commits" -ge "$(manifest_value min_commits)" ]; then
+    gap vision "no vision yet; needs the user: after their request is handled, offer to run the \`vision\` skill with them"
+  elif [ ! -f "$marker" ]; then
+    mkdir -p "$(dirname "$marker")" && touch "$marker"
+    gap vision "deferred until $(manifest_value min_commits) commits (now $commits); the newest spec is the guidance until then. Nothing to fix."
+  fi
+fi
+
+[ -f "$root/docs/agents/issue-tracker.md" ] || gap matt_setup "no docs/agents/issue-tracker.md; run \`wk adopt\`"
+[ -f "$(vault_dir)/wiki/overview.md" ] || gap vault_page "no $(manifest_value vault)/wiki/overview.md in the vault; run \`wk adopt\`"
+
+for skill in "$HOME/.agents/skills"/*/; do
+  [ -e "$HOME/.claude/skills/$(basename "$skill")/SKILL.md" ] || { gap skills_visible "$(basename "$skill") is not visible to Claude Code; re-run install.sh"; break; }
+done
+
+lock="$(wk_config kit)/agents/agents.lock"
+expected=$(jq -r '.agents | to_entries[] | .value.installed_sha256 + "  " + .key' "$lock" | sort)
+actual=$(cd "$HOME/.claude/agents/ecc" 2>/dev/null && shasum -a 256 -- *.md | sed 's/\.md$//' | sort)
+[ "$expected" = "$actual" ] || gap agents "installed ECC agents differ from agents.lock; run \`wk agents-sync\`"
+
+proposals=$(ls "$(vault_dir)/wiki/_proposals"/*.md 2>/dev/null || true)
+[ -z "$proposals" ] || gap proposals "needs the user: show each pending proposal and ask apply or reject: $(echo $proposals)"

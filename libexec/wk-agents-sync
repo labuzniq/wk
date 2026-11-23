@@ -1,0 +1,84 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# ///
+"""Install the ECC agents named in agents/agents.toml, with skills set in frontmatter only."""
+import hashlib
+import json
+import re
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
+HOME = Path.home()
+CONFIG = tomllib.loads((HOME / ".config/workspace-kit/config.toml").read_text())
+KIT = Path(CONFIG["kit"])
+SKILLS_DIR = HOME / ".claude/skills"
+TARGET_DIR = HOME / ".claude/agents/ecc"
+CACHE_ROOT = HOME / ".cache/workspace-kit/ecc"
+
+
+def checkout(repo: str, commit: str) -> Path:
+    cache = CACHE_ROOT / commit
+    if not cache.exists():
+        cache.mkdir(parents=True)
+        for args in (["init", "-q"], ["fetch", "-q", "--depth", "1", repo, commit], ["checkout", "-q", "FETCH_HEAD"]):
+            subprocess.run(["git", "-C", str(cache), *args], check=True)
+    return cache
+
+
+def unusable_skills(agents: dict) -> list[str]:
+    problems = []
+    for skill in sorted({s for spec in agents.values() for s in spec["skills"]}):
+        skill_file = SKILLS_DIR / skill / "SKILL.md"
+        if not skill_file.exists():
+            problems.append(f"{skill}: not installed")
+        elif re.search(r"^disable-model-invocation:\s*true", skill_file.read_text(), re.MULTILINE):
+            problems.append(f"{skill}: user-invoked, cannot be preloaded")
+    return problems
+
+
+def with_skills(upstream: str, skills: list[str]) -> str:
+    opening, frontmatter, body = upstream.split("---\n", 2)
+    kept = re.sub(r"^skills:.*\n(?:[ \t]+.*\n)*", "", frontmatter, flags=re.MULTILINE)
+    added = "skills:\n" + "".join(f"  - {s}\n" for s in skills) if skills else ""
+    return f"{opening}---\n{kept}{added}---\n{body}"
+
+
+def sha256(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def install_into_project(source: Path, project: Path, names: list[str]) -> None:
+    target = project / ".claude/agents"
+    target.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        (target / f"{name}.md").write_text((source / "agents" / f"{name}.md").read_text())
+        print(f"agents-sync: {name} in {target}")
+
+
+def main() -> None:
+    manifest = tomllib.loads((KIT / "agents/agents.toml").read_text())
+    source = checkout(manifest["source"]["repo"], manifest["source"]["commit"])
+    if sys.argv[1:2] == ["--project"]:
+        install_into_project(source, Path(sys.argv[2]), sys.argv[3:])
+        return
+
+    agents = manifest["agents"]
+    problems = unusable_skills(agents)
+    if problems:
+        sys.exit("agents-sync: cannot map these skills:\n  " + "\n  ".join(problems))
+
+    TARGET_DIR.mkdir(parents=True, exist_ok=True)
+    lock = {"commit": manifest["source"]["commit"], "agents": {}}
+    for name, spec in agents.items():
+        upstream = (source / "agents" / f"{name}.md").read_text()
+        installed = with_skills(upstream, spec["skills"])
+        (TARGET_DIR / f"{name}.md").write_text(installed)
+        lock["agents"][name] = {"upstream_sha256": sha256(upstream), "installed_sha256": sha256(installed)}
+    (KIT / "agents/agents.lock").write_text(json.dumps(lock, indent=2) + "\n")
+    print(f"agents-sync: {len(agents)} agents in {TARGET_DIR}")
+
+
+main()

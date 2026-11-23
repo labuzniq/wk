@@ -1,0 +1,49 @@
+{
+  "commit": "4adeee6732a12d1540f49a4d50a38ce8c97f9a53",
+  "agents": {
+    "code-reviewer": {
+      "upstream_sha256": "9dd23be23d65f18126e10f7680fc1eb2576ec54a427d076ff2f870bd0bafd5d2",
+      "installed_sha256": "5858c310118472d58b542fbf84e5ace9bd54449a2ef3163b0b403d3e71c525b3"
+    },
+    "python-reviewer": {
+      "upstream_sha256": "d2180b115f5840383268c13d5d075b0541fe7ef2a1ac8ecd5d835266ca1b27ce",
+      "installed_sha256": "17d5da5d915bf4be1058367d2d5cd05a23f9f91936afeda321156013354c3f79"
+    },
+    "typescript-reviewer": {
+      "upstream_sha256": "33753b05487c1aae4235fbff901cceb646735316015f79401569958d1507d2e4",
+      "installed_sha256": "940512dfeb056860cd138206a5ad22ae0d0b88bf6a7a59d5826bd89eba79391e"
+    },
+    "swift-reviewer": {
+      "upstream_sha256": "b8de7f16fafef82645aca3923b0c4fdbe619433c5df9386b3737fb6591545e8b",
+      "installed_sha256": "bf2176b8e4e1a155092dec8d80b7dcaf497b63d248a5f2ae92a957b6020fdcc9"
+    },
+    "code-simplifier": {
+      "upstream_sha256": "4020b1466f4a635ed33b87a3d734bda45363514defc7d1613b81d5c59e426c6b",
+      "installed_sha256": "22f5d502f988f019b0e7f089210118b9f09bb427ef8d9a36e0cd645beba9ba91"
+    },
+    "security-reviewer": {
+      "upstream_sha256": "813e4062bed5f42ab25dd02a0070f682058ffe9508198fcfdbb2c31296f93b7b",
+      "installed_sha256": "813e4062bed5f42ab25dd02a0070f682058ffe9508198fcfdbb2c31296f93b7b"
+    },
+    "silent-failure-hunter": {
+      "upstream_sha256": "e5e2094c6f50cc515a77376331c78e4955d5ff16c7a0e5d8f6edec692b7ebd8d",
+      "installed_sha256": "034daf909f330bd3e4e293eb638d700bdd8399a407b07e6f3d4289860c8d9fa8"
+    },
+    "performance-optimizer": {
+      "upstream_sha256": "76d00a70fcc07a0b207f6b517d54078fa7a59f29e157fea72bf5f1d9cab8f9b2",
+      "installed_sha256": "70ed5134ac7a27121b8f3f602dd5b799ed1f38cd0381aa253460f32e7c79696a"
+    },
+    "build-error-resolver": {
+      "upstream_sha256": "acc9e14df59dd28d00f966b3a6cf0d9aeeda7e8a9ab7f1bc442466c0219c35ec",
+      "installed_sha256": "d17c21378f45b453b4f81a0225af8c3ec55de2b11637b7301e90b5c83457fcda"
+    },
+    "swift-build-resolver": {
+      "upstream_sha256": "219e9e37151e385c0eae69b28306897e2a21ba1dbad5ed3077801c822c98b156",
+      "installed_sha256": "a35a8bef0556b4dbc00c4d84b5848acb3ad38080160b780bd247edfed46ac5ac"
+    },
+    "pr-test-analyzer": {
+      "upstream_sha256": "5432aaf7e5fcb0813ac21828382971cc00f17d56ee95eac6d0ce180fc5d58016",
+      "installed_sha256": "e30f8d46cbce59898568364279aad528542445f8876751c3df16b0d6cfc28a57"
+    }
+  }
+}

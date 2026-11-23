@@ -1,0 +1,220 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# ///
+"""Add the project capsule to the git repo in the current directory. Existing files are left untouched."""
+import argparse
+import datetime
+import json
+import shutil
+import subprocess
+import tomllib
+from pathlib import Path
+
+CONFIG = tomllib.loads((Path.home() / ".config/workspace-kit/config.toml").read_text())
+KIT = Path(CONFIG["kit"])
+
+STACKS = ["python", "ts", "swift"]
+MATT_SETUP = Path.home() / ".agents/skills/setup-matt-pocock-skills"
+AGENT_SKILLS_BLOCK = """
+## Agent skills
+
+### Issue tracker
+
+Tickets are Orca workspace cards; specs live in `docs/specs/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default triage roles, recorded on the card comment. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+"""
+
+
+def run(*args: str) -> str:
+    return subprocess.run(args, check=True, capture_output=True, text=True).stdout
+
+
+def toml_list(items: list[str]) -> str:
+    return "[" + ", ".join(f'"{i}"' for i in items) + "]"
+
+
+def tracked(root: Path, *patterns: str) -> bool:
+    return bool(run("git", "-C", str(root), "ls-files", "--", *patterns).strip())
+
+
+def detect_stacks(root: Path) -> list[str]:
+    found = {
+        "python": (root / "pyproject.toml").exists(),
+        "ts": (root / "package.json").exists(),
+        "swift": tracked(root, "Package.swift", "*.xcodeproj/*"),
+    }
+    return [stack for stack in STACKS if found[stack]]
+
+
+def stack_commands(stack: str, root: Path) -> dict:
+    if stack == "python":
+        return {"tools": {"python": "3.13", "uv": "latest"}, "setup": "uv sync", "test": "uv run pytest", "lint": "uv run ruff check"}
+    if stack == "ts":
+        manager = "npm" if (root / "package-lock.json").exists() else "pnpm"
+        scripts = json.loads((root / "package.json").read_text()).get("scripts", {}) if (root / "package.json").exists() else {}
+        lint = "check" if "check" in scripts and "lint" not in scripts else "lint"
+        node = (root / ".nvmrc").read_text().strip().lstrip("v") if (root / ".nvmrc").exists() else "24"
+        tools = {"node": node} | ({"pnpm": "latest"} if manager == "pnpm" else {})
+        return {"tools": tools, "setup": f"{manager} install", "test": f"{manager} test", "lint": f"{manager} run {lint}"}
+    if (root / "Package.swift").exists():
+        return {"tools": {}, "setup": "swift package resolve", "test": "swift test"}
+    return {"tools": {}}
+
+
+def mise_toml(slug: str, stacks: list[str], root: Path) -> str:
+    commands = [stack_commands(s, root) for s in stacks]
+    tools = {name: version for c in commands for name, version in c["tools"].items()}
+    lines = ["[tools]", *(f'{name} = "{version}"' for name, version in tools.items()), ""]
+    lines += ["[env]", '_.file = ".env"', f'PROJECT_SLUG = "{slug}"', ""]
+    for task in ("setup", "test", "lint"):
+        lines += [f"[tasks.{task}]", f"run = {toml_list([c[task] for c in commands if task in c])}", ""]
+    lines += ['[tasks."board:sync"]', 'run = "wk board-sync --repo"', "", "[tasks.doctor]", 'run = "wk doctor"', ""]
+    return "\n".join(lines)
+
+
+ORCA_YAML = "scripts:\n  setup: |\n    mise trust -y && mise run setup\n"
+
+
+def tracker_config(root: Path) -> None:
+    agents_dir = root / "docs/agents"
+    write_new(agents_dir / "issue-tracker.md", (KIT / "templates/orca-tracker.md").read_text())
+    for seed in ("triage-labels.md", "domain.md"):
+        write_new(agents_dir / seed, (MATT_SETUP / seed).read_text())
+    claude_md = root / "CLAUDE.md"
+    text = claude_md.read_text() if claude_md.exists() else f"# {root.name}\n"
+    if "## Agent skills" not in text:
+        claude_md.write_text(text.rstrip("\n") + "\n" + AGENT_SKILLS_BLOCK)
+        print("added Agent skills block to CLAUDE.md")
+
+
+def manifest(slug: str, project_type: str, stacks: list[str], repo_id: str) -> str:
+    return (
+        f'slug = "{slug}"\ntype = "{project_type}"\nstack = {toml_list(stacks)}\n'
+        f'orca_repo_id = "{repo_id}"\nvault = "knowledge-base"\n\n'
+        "[vision]\nmin_commits = 20\nrefresh_days = 90\n\n[skip]\n"
+    )
+
+
+def orca_repo_id(root: Path) -> str:
+    repos = json.loads(run("orca", "repo", "list", "--json"))["result"]["repos"]
+    for repo in repos:
+        if repo["path"] == str(root):
+            return repo["id"]
+    return json.loads(run("orca", "repo", "add", "--path", str(root), "--json"))["result"]["repo"]["id"]
+
+
+IGNORED = [".env", ".env.local", "mise.local.toml", ".claude/settings.local.json"]
+QUEUE = "~/.local/state/workspace-kit/sessions/{slug}/queue"
+AUTOMATIONS = {
+    "Wiki ingest: {slug}": [
+        "--trigger", "daily", "--time", "07:30", "--missed-run-grace-minutes", "720",
+        "--precheck", 'test -n "$(ls -A ' + QUEUE + ' 2>/dev/null)" || test -n "$(git -C {vault} status --porcelain -- raw 2>/dev/null)"',
+        "--prompt", "Run the wiki-ingest skill on every queued session, then stop.",
+    ],
+    "Wiki lint: {slug}": ["--trigger", "0 9 * * 6", "--prompt", "Run the wiki-lint skill, then stop."],
+}
+
+
+def create_vault(vault: Path, slug: str) -> None:
+    if vault.exists():
+        print(f"kept    {vault.name}/")
+        return
+    shutil.copytree(KIT / "templates/vault", vault)
+    for page in (vault / "wiki").glob("*.md"):
+        page.write_text(page.read_text().replace("__SLUG__", slug).replace("__DATE__", datetime.date.today().isoformat()))
+    print(f"created {vault.name}/")
+
+
+def ignore(root: Path) -> None:
+    gitignore = root / ".gitignore"
+    present = gitignore.read_text().splitlines() if gitignore.exists() else []
+    missing = [line for line in IGNORED if line not in present]
+    if missing:
+        gitignore.write_text("\n".join(present + missing) + "\n")
+        print("updated .gitignore")
+
+
+def create_automations(root: Path, vault: Path, slug: str) -> None:
+    existing = {a["name"] for a in json.loads(run("orca", "automations", "list", "--json"))["result"]["automations"]}
+    for name_template, flags in AUTOMATIONS.items():
+        name = name_template.format(slug=slug)
+        if name in existing:
+            continue
+        flags = [flag.format(slug=slug, vault=vault) for flag in flags]
+        run("orca", "automations", "create", "--name", name, *flags, "--provider", "claude",
+            "--workspace", f"path:{root}", "--fresh-session", "--enabled", "--json")
+        print(f"created automation '{name}'")
+
+
+def allow_vault(settings_file: Path, vault: Path) -> None:
+    settings = json.loads(settings_file.read_text()) if settings_file.exists() else {}
+    directories = settings.setdefault("permissions", {}).setdefault("additionalDirectories", [])
+    if str(vault) in directories:
+        return
+    directories.append(str(vault))
+    settings_file.parent.mkdir(parents=True, exist_ok=True)
+    settings_file.write_text(json.dumps(settings, indent=2) + "\n")
+    print(f"allowed the vault in {settings_file}")
+
+
+def write_new(path: Path, text: str) -> None:
+    if path.exists():
+        print(f"kept    {path.name}")
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    print(f"created {path.name}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="wk adopt")
+    parser.add_argument("--type", choices=["code", "research"], default="code")
+    parser.add_argument("--stack", help="comma-separated: " + ",".join(STACKS) + "; detected from the repo when left out")
+    parser.add_argument("--with", dest="agents", action="append", default=[], help="extra ECC agent for this project")
+    args = parser.parse_args()
+    if subprocess.run(["git", "rev-parse", "--git-dir"], capture_output=True).returncode != 0:
+        run("git", "init", "-q")
+    if subprocess.run(["git", "rev-parse", "-q", "--verify", "HEAD"], capture_output=True).returncode != 0:
+        run("git", "commit", "-q", "--allow-empty", "-m", f"chore: start {Path.cwd().name}")
+    root = Path(run("git", "rev-parse", "--show-toplevel").strip())
+    stacks = [s for s in args.stack.split(",") if s] if args.stack is not None else detect_stacks(root)
+    for stack in stacks:
+        if stack not in STACKS:
+            parser.error(f"unknown stack '{stack}'")
+    primary = Path(run("git", "rev-parse", "--path-format=absolute", "--git-common-dir").strip()).parent
+    slug = primary.name.lower()
+    repo_id = orca_repo_id(primary)
+    base = run("git", "-C", str(primary), "branch", "--show-current").strip()
+    if "origin" in run("git", "-C", str(primary), "remote").split():
+        base = f"origin/{base}"
+    run("orca", "repo", "set-base-ref", "--repo", f"id:{repo_id}", "--ref", base, "--json")
+
+    write_new(root / ".workspace-kit.toml", manifest(slug, args.type, stacks, repo_id))
+    write_new(root / "mise.toml", mise_toml(slug, stacks, root))
+    write_new(root / "orca.yaml", ORCA_YAML)
+    tracker_config(root)
+    for template in sorted(p for p in (KIT / "templates/project").rglob("*") if p.is_file()):
+        target = root / template.relative_to(KIT / "templates/project")
+        if not target.exists() and not (template.name == ".gitkeep" and target.parent.exists()):
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(template, target)
+            print(f"created {target.relative_to(root)}")
+    create_vault(root / "knowledge-base", slug)
+    ignore(root)
+    vault = primary / "knowledge-base"
+    for checkout in {root, primary}:
+        allow_vault(checkout / ".claude/settings.local.json", vault)
+    create_automations(primary, vault, slug)
+    if args.agents:
+        subprocess.run([str(KIT / "bin/wk"), "agents-sync", "--project", str(root), *args.agents], check=True)
+
+
+main()

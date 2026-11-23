@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+kit="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+command="${1:?usage: wk <command> [args]}"
+shift
+[ -x "$kit/libexec/wk-$command" ] || { echo "wk: unknown command '$command'" >&2; exit 2; }
+exec "$kit/libexec/wk-$command" "$@"

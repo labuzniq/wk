@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+. "$(dirname "$0")/../lib/config.sh"
+name="${1:?usage: wk new <name> [--type code|research] [--stack python,ts,swift] [--with <agent>]...}"
+shift
+project="$(wk_config projects_root)/$name"
+[ ! -e "$project" ] || { echo "wk new: $project already exists" >&2; exit 1; }
+
+mkdir -p "$project"
+cd "$project"
+"$(dirname "$0")/wk-adopt" "$@"
+git add -A
+git commit -q -m "chore: add workspace-kit capsule"
+echo "created $project"

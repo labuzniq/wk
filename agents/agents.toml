@@ -1,0 +1,16 @@
+[source]
+repo = "https://github.com/affaan-m/ECC"
+commit = "4adeee6732a12d1540f49a4d50a38ce8c97f9a53"
+
+[agents]
+code-reviewer         = { skills = ["codebase-design"] }
+python-reviewer       = { skills = ["codebase-design"] }
+typescript-reviewer   = { skills = ["codebase-design"] }
+swift-reviewer        = { skills = ["codebase-design"] }
+code-simplifier       = { skills = ["codebase-design"] }
+security-reviewer     = { skills = [] }
+silent-failure-hunter = { skills = ["diagnosing-bugs"] }
+performance-optimizer = { skills = ["diagnosing-bugs"] }
+build-error-resolver  = { skills = ["diagnosing-bugs"] }
+swift-build-resolver  = { skills = ["diagnosing-bugs"] }
+pr-test-analyzer      = { skills = ["tdd"] }

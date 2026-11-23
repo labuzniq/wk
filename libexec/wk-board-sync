@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Moves Orca cards forward from git and pull request state. Never moves a card back from completed.
+set -euo pipefail
+command -v orca >/dev/null && orca status --json >/dev/null 2>&1 || exit 0
+
+gh_interval_seconds=600
+state_dir="$HOME/.local/state/workspace-kit/gh"
+mkdir -p "$state_dir"
+
+pr_state() {
+  local path="$1" branch="$2" stamp
+  git -C "$path" rev-parse -q --verify "refs/remotes/origin/$branch" >/dev/null || return 0
+  stamp="$state_dir/$(printf '%s' "$path" | shasum | cut -d' ' -f1)"
+  if [ -f "$stamp" ] && [ $(( $(date +%s) - $(stat -f %m "$stamp") )) -lt "$gh_interval_seconds" ]; then
+    return 0
+  fi
+  touch "$stamp"
+  (cd "$path" && gh pr view "$branch" --json state,reviewDecision --jq '.state + " " + .reviewDecision' 2>/dev/null) || true
+}
+
+merged_into_base() {
+  local path="$1" base="$2" head
+  head=$(git -C "$path" rev-parse HEAD)
+  git -C "$path" merge-base --is-ancestor "$head" "$base" || return 1
+  [ -z "$(git -C "$path" rev-list --first-parent "$base" | grep "^$head$" || true)" ]
+}
+
+sync_card() {
+  local id="$1" path="$2" branch="${3#refs/heads/}" base="$4" status="$5" pr target=""
+  [ "$status" = completed ] && return 0
+  pr=$(pr_state "$path" "$branch")
+  if [[ "$pr" == MERGED* ]] || merged_into_base "$path" "$base"; then
+    target=completed
+  elif [[ "$pr" == "OPEN CHANGES_REQUESTED" ]]; then
+    target=in-progress
+  elif [[ "$pr" == OPEN* ]]; then
+    target=in-review
+  elif [ "$status" = todo ] && { [ -n "$(git -C "$path" status --porcelain)" ] || [ "$(git -C "$path" rev-list --count "$base..HEAD")" -gt 0 ]; }; then
+    target=in-progress
+  fi
+  [ -z "$target" ] || [ "$target" = "$status" ] || orca worktree set --worktree "id:$id" --workspace-status "$target" --json >/dev/null
+}
+
+current=$(orca worktree current --json 2>/dev/null) || exit 0
+cards_dir="$HOME/.local/state/workspace-kit/cards"
+mkdir -p "$cards_dir"
+printf '%s\n' "$current" > "$cards_dir/$(printf '%s' "$(jq -r '.result.worktree.path' <<<"$current")" | shasum | cut -d' ' -f1).json"
+if [ "${1:-}" = --repo ]; then
+  cards=$(orca worktree list --repo "id:$(jq -r '.result.worktree.repoId' <<<"$current")" --json | jq -c '.result.worktrees[]')
+else
+  cards=$(jq -c '.result.worktree' <<<"$current")
+fi
+
+while IFS=$'\t' read -r id path branch base status; do
+  sync_card "$id" "$path" "$branch" "$base" "$status"
+done < <(jq -r 'select(.isMainWorktree | not) | select(.baseRef != null) | [.id, .path, .branch, .baseRef, .workspaceStatus] | @tsv' <<<"$cards")
