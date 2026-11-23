@@ -14,9 +14,18 @@ if ! . "$kit/lib/project.sh"; then
 fi
 
 if [ ! -f "$manifest" ]; then
+  offer="$state_dir/capsule-pr/$(path_key "$primary")"
   if [ -z "$(git rev-list -n 1 --all 2>/dev/null)" ]; then
     echo "New repo without a workspace-kit capsule. Before anything else, $setup"
-  elif [ ! -f "$declined" ]; then
+  elif [ -f "$offer" ]; then
+    read -r _ url pr_state < "$offer"
+    nohup "$kit/bin/wk" adopt-pr --refresh >/dev/null 2>&1 &
+    [ "$pr_state" != MERGED ] || echo "The capsule pull request $url is merged, but this checkout does not have it yet. Update the default branch in $primary (\`git pull --ff-only\`), then run \`wk adopt\` there to finish the setup."
+  elif [ -f "$declined" ] || [ -f "$state_dir/declined/$(path_key "$primary")" ]; then
+    :
+  elif git config --get remote.origin.url | grep -q github; then
+    echo "This existing repo has no workspace-kit capsule. Before anything else, run \`wk adopt-pr\`: it puts the capsule on a branch and prints the URL of a pull request. Tell the user in one line that the capsule is offered as that pull request, and that closing it means no. Then handle their request."
+  else
     echo "This existing repo has no workspace-kit capsule. Ask the user once, yes or no, whether to set it up. On yes, $setup On no, run \`mkdir -p $(dirname "$declined") && touch $declined\` so the question is never asked again."
   fi
   exit 0

@@ -142,3 +142,13 @@ The first real use of `to-tickets` created 16 empty workspaces and no issue. Orc
 - A skill that differs from what the lock file can bring back is moved to `~/.claude/backup/<timestamp>-skills/` before it is installed again.
 - No patch ships yet: check V11 found no skill or agent that needs one. The tests apply a patch to a stand-in skill and a stand-in agent.
 - `wk skills-sync` and `wk agents-sync` are tested with stand-ins for `npx` and for the upstream repo, not against the network.
+
+## Capsule by pull request (2026-11-23)
+
+This replaces "in an existing repo with history it asks once" from the change of direction above, for repos whose `origin` is on GitHub. A repo without a GitHub remote is still asked about once.
+
+- `wk adopt-pr` creates the Orca worktree `workspace-kit-capsule`, runs `wk adopt` in it, pushes the branch and opens the pull request. The offer is remembered in `~/.local/state/workspace-kit/capsule-pr/`.
+- The session-start hook makes no network call: it reads that file and starts `wk adopt-pr --refresh` in the background. A closed pull request becomes a file in `declined/`, the same place an old "no" lives.
+- `wk adopt` in a worktree whose main checkout has no capsule yet creates files only. The Orca automations and the vault permission in the main checkout are created by `wk adopt` there after the merge; the doctor's `automations` gap asks for it. The doctor reads a marker file, not Orca.
+- confirmed with stand-ins for `orca` and `gh` (16 tests). The Orca and gh calls it makes (`orca worktree create --repo --name --no-parent --setup skip --comment --json`, `orca worktree set --pr --workspace-status`, `gh pr create`, `gh pr view --json state`) were each used by hand on this Mac the same day.
+- open: one whole run of `wk adopt-pr` against a real repo on GitHub.

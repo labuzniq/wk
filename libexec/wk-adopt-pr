@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Offers the capsule to an existing repo as a pull request: the capsule goes on a branch in an Orca worktree, nothing on the default branch.
+# `wk adopt-pr --refresh` asks GitHub what became of that pull request; a closed one is the remembered "no".
+set -euo pipefail
+kit="$(dirname "$0")/.."
+# shellcheck source=../lib/project.sh
+. "$kit/lib/project.sh" || { echo "wk adopt-pr: not inside a git repo" >&2; exit 1; }
+offer="$state_dir/capsule-pr/$(path_key "$primary")" # one line: <number> <url> <state>
+declined="$state_dir/declined/$(path_key "$primary")"
+
+if [ "${1:-}" = --refresh ]; then
+  [ -f "$offer" ] || exit 0
+  read -r number url _ < "$offer"
+  pr_state=$(cd "$primary" && gh pr view "$number" --json state --jq .state 2>/dev/null) || exit 0
+  if [ "$pr_state" = CLOSED ]; then
+    mkdir -p "$(dirname "$declined")"
+    touch "$declined"
+    rm "$offer"
+  else
+    echo "$number $url $pr_state" > "$offer"
+  fi
+  exit 0
+fi
+
+[ ! -f "$primary/.workspace-kit.toml" ] || { echo "wk adopt-pr: this repo already has a capsule; \`wk doctor\` lists what is missing" >&2; exit 1; }
+[ ! -f "$declined" ] || { echo "wk adopt-pr: the capsule was declined for this repo; delete $declined to offer it again" >&2; exit 1; }
+if [ -f "$offer" ]; then
+  echo "already offered: $(cut -d' ' -f2 "$offer")"
+  exit 0
+fi
+git -C "$primary" config --get remote.origin.url | grep -q github \
+  || { echo "wk adopt-pr: origin is not on GitHub, so a pull request is not possible. Ask the user once whether to run \`wk adopt\` here." >&2; exit 1; }
+
+repo_id=$(orca repo list --json | jq -r --arg path "$primary" '.result.repos[] | select(.path == $path) | .id')
+[ -n "$repo_id" ] || repo_id=$(orca repo add --path "$primary" --json | jq -r '.result.repo.id')
+worktree=$(cd "$primary" && orca worktree create --repo "id:$repo_id" --name workspace-kit-capsule --no-parent --setup skip \
+  --comment "Capsule offered as a pull request; merge it for yes, close it for no." --json | jq -er '.result.worktree.path')
+
+cd "$worktree"
+"$kit/libexec/wk-adopt"
+git add -A
+git commit -q -m "chore: add workspace-kit capsule"
+git push -q -u origin HEAD
+url=$(gh pr create --title "chore: add workspace-kit capsule" --body "Adds the [workspace-kit](https://github.com/labuzniq/wk) capsule: \`mise.toml\`, \`orca.yaml\`, tracker docs under \`docs/agents/\` and a knowledge vault in \`knowledge-base/\`. Files that were already here are untouched.
+
+- **Merge** to say yes. The two wiki automations in Orca are created in the next session after the merge.
+- **Close** to say no. The question is not asked again.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)" | tail -1)
+number="${url##*/}"
+orca worktree set --worktree "path:$worktree" --pr "$number" --workspace-status in-review --json >/dev/null
+mkdir -p "$(dirname "$offer")"
+echo "$number $url OPEN" > "$offer"
+echo "$url"
