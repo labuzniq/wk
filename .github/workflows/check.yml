@@ -1,18 +1,26 @@
 name: check
 on:
   pull_request:
+  # A squash merge makes a commit no pull request has tested.
   push:
     branches: [main]
 
 permissions:
   contents: read
 
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
-    # The kit targets macOS: its scripts use the macOS forms of stat and shasum.
+    # The kit targets macOS: its scripts use the macOS form of stat.
     runs-on: macos-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - run: brew install bats-core shellcheck
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+      - run: brew install bats-core shellcheck jq
       - run: test/run

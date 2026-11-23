@@ -47,7 +47,7 @@ Then do the three manual Orca settings in [`docs/orca-settings.md`](docs/orca-se
 test/run
 ```
 
-One command runs shell lint (`shellcheck`), Python lint (`ruff`) and the tests (`bats`). It needs `shellcheck` and `bats` (`brew install shellcheck bats-core`). The tests run in a throwaway home folder with stand-ins for `orca` and `gh`, so they touch neither your Orca board nor GitHub. CI (Continuous Integration) runs the same command on every pull request.
+One command runs shell lint (`shellcheck`), Python lint (`ruff`) and the tests (`bats`). On top of the kit's own requirements it needs `shellcheck` and `bats` (`brew install shellcheck bats-core`). The tests run in a throwaway home folder with stand-ins for `orca` and `gh`, so they touch neither your Orca board nor GitHub. CI (Continuous Integration) runs the same command on every pull request.
 
 ## Layout
 

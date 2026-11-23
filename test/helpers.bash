@@ -7,10 +7,11 @@ setup_home() {
   UV_CACHE_DIR="$(uv cache dir)"
   UV_PYTHON_INSTALL_DIR="$(uv python dir)"
   export UV_CACHE_DIR UV_PYTHON_INSTALL_DIR
-  unset ORCA_WORKTREE_ID
+  unset ORCA_WORKTREE_ID GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE XDG_CONFIG_HOME GH_TOKEN GITHUB_TOKEN
+  unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
 
   HOME="$(cd "$BATS_TEST_TMPDIR" && pwd -P)/home"
-  export HOME
+  export HOME GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL="$HOME/.gitconfig"
   export ORCA_STUB="$HOME/orca-stub" GH_STUB="$HOME/gh-stub"
   export PATH="$kit/test/stubs:$PATH"
   state="$HOME/.local/state/workspace-kit"
@@ -53,3 +54,9 @@ adopted_project() {
   git add -A
   git commit -q -m "chore: add workspace-kit capsule"
 }
+
+# is <actual> <expected>: on a mismatch, prints both, so a failing test shows what it got.
+is() { [ "$1" = "$2" ] || { printf 'expected: %s\n     got: %s\n' "$2" "$1"; return 1; }; }
+
+# card_file <path>: where `wk board-sync` saves the card of the checkout at <path>.
+card_file() { echo "$state/cards/$(printf '%s' "$1" | shasum | cut -d' ' -f1).json"; }

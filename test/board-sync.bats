@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Board status rules: `wk board-sync` moves a card forward from git and pull request state.
 
+# shellcheck disable=SC2154 # kit, state and the helpers come from helpers.bash
 load helpers
 
 setup() {
@@ -19,10 +20,16 @@ card() {
 
 commit() { git -C "$repo" commit -q --allow-empty -m "feat: work"; }
 pushed() { git -C "$repo" update-ref refs/remotes/origin/task HEAD; }
-pull_request() { echo "$1" > "$GH_STUB/pr-state"; }
+# pull_request <state> [review decision]: what GitHub knows about the branch's pull request.
+pull_request() { jq -n --arg state "$1" --arg review "${2:-}" '{state: $state, reviewDecision: $review}' > "$GH_STUB/pr.json"; }
 
-moved_to() { grep -qx -- "worktree set --worktree id:card-1 --workspace-status $1 --json" "$ORCA_STUB/calls"; }
-not_moved() { if grep -q "worktree set" "$ORCA_STUB/calls"; then return 1; fi; }
+# moved_to <status> [card id]
+moved_to() { grep -qx -- "worktree set --worktree id:${2:-card-1} --workspace-status $1 --json" "$ORCA_STUB/calls"; }
+# not_moved: the sync read the card and changed no status.
+not_moved() {
+  grep -q "^worktree current" "$ORCA_STUB/calls" || { echo "board-sync never read the card"; return 1; }
+  if grep "worktree set" "$ORCA_STUB/calls"; then return 1; fi
+}
 
 @test "a todo card with no work stays todo" {
   card todo
@@ -70,11 +77,27 @@ not_moved() { if grep -q "worktree set" "$ORCA_STUB/calls"; then return 1; fi; }
   not_moved
 }
 
+@test "an in-progress card with new work is left as it is" {
+  card in-progress
+  commit
+  "$kit/bin/wk" board-sync
+  not_moved
+}
+
+@test "a card without a base ref is skipped" {
+  card todo
+  touch "$repo/notes.txt"
+  jq '.result.worktree.baseRef = null' "$ORCA_STUB/current.json" > "$ORCA_STUB/current.json.new"
+  mv "$ORCA_STUB/current.json.new" "$ORCA_STUB/current.json"
+  "$kit/bin/wk" board-sync
+  not_moved
+}
+
 @test "an open pull request moves the card to in-review" {
   card in-progress
   commit
   pushed
-  pull_request "OPEN "
+  pull_request OPEN
   "$kit/bin/wk" board-sync
   moved_to in-review
 }
@@ -83,7 +106,7 @@ not_moved() { if grep -q "worktree set" "$ORCA_STUB/calls"; then return 1; fi; }
   card in-review
   commit
   pushed
-  pull_request "OPEN CHANGES_REQUESTED"
+  pull_request OPEN CHANGES_REQUESTED
   "$kit/bin/wk" board-sync
   moved_to in-progress
 }
@@ -92,7 +115,7 @@ not_moved() { if grep -q "worktree set" "$ORCA_STUB/calls"; then return 1; fi; }
   card in-review
   commit
   pushed
-  pull_request "MERGED APPROVED"
+  pull_request MERGED APPROVED
   "$kit/bin/wk" board-sync
   moved_to completed
 }
@@ -101,7 +124,7 @@ not_moved() { if grep -q "worktree set" "$ORCA_STUB/calls"; then return 1; fi; }
   card completed
   commit
   pushed
-  pull_request "OPEN CHANGES_REQUESTED"
+  pull_request OPEN CHANGES_REQUESTED
   "$kit/bin/wk" board-sync
   not_moved
 }
@@ -109,7 +132,7 @@ not_moved() { if grep -q "worktree set" "$ORCA_STUB/calls"; then return 1; fi; }
 @test "gh is not asked for a branch that is not on origin" {
   card in-progress
   commit
-  pull_request "OPEN "
+  pull_request OPEN
   "$kit/bin/wk" board-sync
   [ ! -s "$GH_STUB/calls" ]
   not_moved
@@ -119,10 +142,21 @@ not_moved() { if grep -q "worktree set" "$ORCA_STUB/calls"; then return 1; fi; }
   card in-progress
   commit
   pushed
-  pull_request "OPEN "
+  pull_request OPEN
   "$kit/bin/wk" board-sync
   "$kit/bin/wk" board-sync
-  [ "$(wc -l < "$GH_STUB/calls")" -eq 1 ]
+  is "$(cut -d' ' -f1-5 "$GH_STUB/calls")" "pr view task --json state,reviewDecision"
+}
+
+@test "gh is asked again after ten minutes" {
+  card in-progress
+  commit
+  pushed
+  pull_request OPEN
+  "$kit/bin/wk" board-sync
+  find "$state/gh" -type f -exec touch -t 202001010000 {} +
+  "$kit/bin/wk" board-sync
+  is "$(wc -l < "$GH_STUB/calls" | tr -d ' ')" 2
 }
 
 @test "the main checkout is never moved" {
@@ -142,19 +176,18 @@ not_moved() { if grep -q "worktree set" "$ORCA_STUB/calls"; then return 1; fi; }
     "$ORCA_STUB/current.json" > "$ORCA_STUB/list.json"
   "$kit/bin/wk" board-sync --repo
   moved_to in-progress
-  grep -qx -- "worktree set --worktree id:card-2 --workspace-status in-progress --json" "$ORCA_STUB/calls"
+  moved_to in-progress card-2
 }
 
 @test "the current card is saved for the session-start hook" {
   card in-progress
   "$kit/bin/wk" board-sync
-  saved="$state/cards/$(printf '%s' "$repo" | shasum | cut -d' ' -f1).json"
-  [ "$(jq -r '.result.worktree.displayName' "$saved")" = task ]
+  is "$(jq -r '.result.worktree.displayName' "$(card_file "$repo")")" task
 }
 
 @test "when Orca is not running, nothing happens and the command succeeds" {
   card todo
   touch "$repo/notes.txt" "$ORCA_STUB/down"
   "$kit/bin/wk" board-sync
-  not_moved
+  is "$(cat "$ORCA_STUB/calls")" "status --json"
 }
