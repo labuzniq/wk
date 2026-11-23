@@ -16,7 +16,7 @@ gap() { skipped "$1" || echo "$1: $2"; }
 [ -n "$(manifest_value slug)" ] && [ -n "$(manifest_value type)" ] || gap manifest ".workspace-kit.toml lacks slug or type; run \`wk adopt\`"
 [ -f "$root/CLAUDE.md" ] || gap claude_md "no project CLAUDE.md; run \`wk adopt\`, then fill in purpose, commands and gotchas from the repo"
 grep -qs '^\[tasks\.setup\]' "$root/mise.toml" || gap mise "mise.toml has no setup task"
-[ -n "$(manifest_value orca_repo_id)" ] || gap orca_repo "repo is not registered in Orca; run \`wk adopt\`"
+[ -s "$state_dir/repos/$(path_key "$primary")" ] || gap orca_repo "this repo is not set up in your Orca on this Mac; run \`wk adopt\` (it keeps every existing file) and commit what it changed"
 [ -f "$root/orca.yaml" ] && [ -f "$root/.worktreeinclude" ] || gap orca_files "orca.yaml or .worktreeinclude is missing; run \`wk adopt\`"
 grep -qs '^  setup:' "$root/orca.yaml" || gap orca_setup_hook "orca.yaml has no scripts.setup; add \`mise trust -y && mise run setup\`"
 
@@ -49,6 +49,8 @@ for skill in "$HOME/.agents/skills"/*/; do
 done
 
 kit_dir=$(wk_config kit)
+grep -qsxF "@${kit_dir// /\\ }/claude/CLAUDE.md" "$HOME/.claude/CLAUDE.md" \
+  || gap instructions "$HOME/.claude/CLAUDE.md does not import the kit's shared instructions; run \`$kit_dir/install.sh\` (it keeps your own text and backs the file up)"
 skills_lock="$kit_dir/skills.lock"
 if locked_skills=$(jq -r '.skills | keys | join(" ")' "$skills_lock" 2>/dev/null); then
   # shellcheck disable=SC2086 # one skill name per word; skills-sync allows no other characters in a name
