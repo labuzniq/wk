@@ -154,3 +154,12 @@ This replaces "in an existing repo with history it asks once" from the change of
 - Before the merge, Orca already knows the repo (`orca repo add`, `orca repo set-base-ref`): a worktree cannot be created without it.
 - confirmed with stand-ins for `orca` and `gh`. The Orca and gh calls it makes (`orca worktree create --repo --name --no-parent --setup skip --comment --json`, `orca worktree set --pr --workspace-status`, `gh pr create`, `gh pr view --json state`, `gh pr list --head`, `gh repo view --json owner`, `gh api user`) were each used by hand on this Mac the same day or are read in `--help`.
 - open: one whole run of `wk adopt-pr` against a real repo on GitHub.
+
+## Corrections become checks (2026-11-23)
+
+- confirmed: `git log --all -E --grep` matches each line of a commit message on its own, so `Correction: <key>` is found as the last line of a commit and inside a squashed message. Tested with git 2.48 on this Mac by `test/corrections.bats`.
+- confirmed: a squash merge on GitHub keeps the full messages of the squashed commits, not indented (see commits #20 to #22 of this repo), so the `Correction: <key>` line survives a squash merge with the default message. Not tested: a repo set to use only the pull request title as the squash message; there the line is lost and the correction is reported again.
+- confirmed: `git revert` writes a new message without the lines of the old one, and the old commit stays in the history, so a reverted check still counts as handled.
+- confirmed: `wk corrections` with 3 records, one of them due, takes about 0.07 seconds under stock bash 3.2 (one `awk` per record, one `git log` per due record); the doctor calls it in every session and it makes no network call.
+- confirmed: bash 3.2 does not read `$'\n'` inside a here-document, so the script splits lines before the here-document.
+- open: no real ingest run has written correction records yet. The record form and the two skill texts are tested only through `wk corrections` and `wk doctor` with hand-made records.

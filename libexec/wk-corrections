@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Counts the vault's correction records. One line per record, tab-separated: <state> <key> <sessions> <layer> <note>.
+# States: waiting (under three sessions), due (three or more), done (a commit carries "Correction: <key>"), broken.
+set -euo pipefail
+# shellcheck source=../lib/project.sh
+. "$(dirname "$0")/../lib/project.sh" && [ -f "$manifest" ] \
+  || { echo "wk corrections: no .workspace-kit.toml here; run it inside a project" >&2; exit 1; }
+
+due_at=3
+vault=$(vault_dir)
+
+for record in "$vault"/wiki/corrections/*.md; do
+  [ -f "$record" ] || continue
+  key=${record##*/}
+  key=${key%.md}
+  # One awk per record keeps the doctor fast: the layer on the first line, then each session summary once.
+  parsed=$(awk '
+    NR == 1 && $0 == "---" { inside = 1; next }
+    !inside || $0 == "---" { exit }
+    /^layer:/ { layer = $2 }
+    /^[[:space:]]*-[[:space:]]*raw\/sessions\// {
+      sub(/^[[:space:]]*-[[:space:]]*/, ""); sub(/[[:space:]]+$/, "")
+      if (!seen[$0]++) sessions = sessions "\n" $0
+    }
+    END { printf "%s%s\n", layer, sessions }' "$record")
+  layer=${parsed%%$'\n'*}
+
+  count=0 missing=""
+  if [ "$parsed" != "$layer" ]; then
+    sessions=${parsed#*$'\n'}
+    while IFS= read -r session; do
+      if [ -f "$vault/$session" ]; then count=$((count + 1)); else missing="${missing:-$session}"; fi
+    done <<SESSIONS
+$sessions
+SESSIONS
+  fi
+
+  state=waiting note="-"
+  [ "$count" -lt "$due_at" ] || state=due
+  if [[ ! "$key" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+    state=broken note="the file name must be a key of lowercase letters, digits and dashes; rename the file"
+  elif [ -n "$missing" ]; then
+    state=broken note="$missing is not in the vault; list only session summaries that exist, as \`  - raw/sessions/<file>.md\`"
+  elif [[ ! "$layer" =~ ^(design|check|proof|prose)$ ]]; then
+    state=broken note="layer must be design, check, proof or prose; set \`layer:\` in the record's frontmatter"
+  elif [ "$state" = due ]; then
+    commit=$(git -C "$root" log --all -1 --format=%h -E --grep="(^|[[:space:]])Correction: $key\$" 2>/dev/null || true)
+    [ -z "$commit" ] || { state="done"; note=$commit; }
+  fi
+  printf '%s\t%s\t%s\t%s\t%s\n' "$state" "$key" "$count" "${layer:--}" "$note"
+done
