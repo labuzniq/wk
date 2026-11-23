@@ -142,3 +142,15 @@ The first real use of `to-tickets` created 16 empty workspaces and no issue. Orc
 - A skill that differs from what the lock file can bring back is moved to `~/.claude/backup/<timestamp>-skills/` before it is installed again.
 - No patch ships yet: check V11 found no skill or agent that needs one. The tests apply a patch to a stand-in skill and a stand-in agent.
 - `wk skills-sync` and `wk agents-sync` are tested with stand-ins for `npx` and for the upstream repo, not against the network.
+
+## Shared vault (2026-11-23)
+
+- confirmed: `wk shared-vault` in a throwaway home creates the vault as its own git repo, with one commit, and a second run changes nothing. `install.sh` was run twice in a throwaway home with stand-ins for `orca` and `npx` (`test/install.bats`); it was not run against the real home.
+- confirmed: a `pre-commit` hook in the vault's `.git/hooks` stops a commit when `wk shared-vault check` finds a project's name or a home path. The vault sets `core.hooksPath` to `.git/hooks` for itself, so a global `core.hooksPath` does not switch the hook off (git reads the repo's own setting last; **docs**, not tested with a global setting).
+- confirmed: BSD `grep -rniwF` matches a project's name as a whole word, in any letter case.
+- docs: `permissions.additionalDirectories` in the user's `~/.claude/settings.json` gives every session access to a folder (check V12 covers the key). **open**: not tried in a real session that the shared vault can be written without a permission question; it needs the real home.
+- open: the automation `Wiki lint: shared` is created the way `wk adopt` creates a project's (`orca repo add --path`, then `--workspace path:<vault>`), tested only against the stand-in. No real Orca automation was created. Check V10 (do automations fire while Orca is closed) holds for it too.
+- This replaces the row "0.2: one vault path" in part: the global config now has a `shared_vault` key and the shared vault is in the global `additionalDirectories`. A project's vault is still one per project, inside its repo.
+- The check knows a project by its folder name under the projects folder and by its session queue folder. A project that is elsewhere and has had no captured session is not known to it. Customers, people and code are not something the check can see; the skill text and the vault's schema carry that rule.
+- Found on the way: on bash 3.2 a failing `[[ … ]]` in the middle of a bats test does not fail the test. The new tests use `has` and `lacks` from `test/helpers.bash`; the older tests still hold such lines.
+- Found on the way: `install.sh` stops on a Mac that has no `~/.claude/settings.json`, because `jq` cannot read the missing file. Not changed here.

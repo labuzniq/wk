@@ -13,6 +13,12 @@ if ! . "$kit/lib/project.sh"; then
   exit 0
 fi
 
+shared_vault=$(wk_config shared_vault 2>/dev/null)
+if [ "$root" = "$shared_vault" ]; then
+  echo "Shared vault: this folder holds the lessons that hold across projects. Its CLAUDE.md is the schema; it gets no capsule."
+  exit 0
+fi
+
 if [ ! -f "$manifest" ]; then
   if [ -z "$(git rev-list -n 1 --all 2>/dev/null)" ]; then
     echo "New repo without a workspace-kit capsule. Before anything else, $setup"
@@ -44,6 +50,7 @@ Project: $(manifest_value slug) ($(manifest_value type))
 Orca card: $card
 Vision: $vision
 Vault: $(vault_dir) (project page: wiki/overview.md)
+Shared vault: ${shared_vault:-none yet} (lessons about Orca, the agents and the kit: wiki/learnings.md)
 Newest spec: ${spec:-none yet}
 CONTEXT
 

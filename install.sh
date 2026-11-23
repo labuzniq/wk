@@ -63,6 +63,7 @@ for source in "$HOME/.agents/skills"/*/ "$kit/skills"/*/; do
 done
 
 "$kit/bin/wk" agents-sync
+"$kit/bin/wk" shared-vault
 
 mkdir -p "$HOME/.local/bin"
 link "$kit/bin/wk" "$HOME/.local/bin/wk"

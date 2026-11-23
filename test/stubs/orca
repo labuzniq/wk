@@ -7,7 +7,7 @@ case "$1 ${2:-}" in
   "status --json") [ ! -f "$ORCA_STUB/down" ] ;;
   "worktree current") cat "$ORCA_STUB/current.json" ;;
   "worktree list") cat "$ORCA_STUB/list.json" ;;
-  "worktree set" | "repo set-base-ref") ;;
+  "worktree set" | "repo set-base-ref" | "skills install") ;;
   "repo list") jq -c '{result: {repos: .}}' "$ORCA_STUB/repos.json" ;;
   "repo add")
     jq -c --arg path "$4" '. + [{id: "repo-\(length + 1)", path: $path}]' "$ORCA_STUB/repos.json" > "$ORCA_STUB/repos.json.new"

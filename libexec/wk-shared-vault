@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# The shared vault holds lessons across projects. No argument: create it once, keep an existing one. `path`: print where it is. `check`: list private details in it.
+set -euo pipefail
+kit="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../lib/config.sh
+. "$kit/lib/config.sh"
+
+vault=$(wk_config shared_vault 2>/dev/null || true)
+
+# Prints one line per private detail: a project's name, or a path that names the home folder.
+check() {
+  local projects_root words found=0 word hits
+  cd "$vault"
+  projects_root=$(wk_config projects_root)
+  words=$( { ls "$projects_root" "$HOME/.local/state/workspace-kit/sessions" 2>/dev/null || true; } \
+    | grep -v -e '^$' -e ':$' -e '^no-capture$' | grep -vixF -e "$(basename "$kit")" | sort -u)
+  [ ! -f .allowed-words ] || words=$(printf '%s\n' "$words" | grep -vixFf .allowed-words || true)
+  while IFS= read -r word; do
+    [ -n "$word" ] || continue
+    hits=$(grep -rniwF --exclude-dir=.git --exclude=.allowed-words -e "$word" . | cut -d: -f1,2 || true)
+    [ -z "$hits" ] || { found=1; printf '%s\n' "$hits" | sed "s|^\./||; s|\$|: names the project '$word'|"; }
+  done <<<"$words"
+  hits=$(grep -rnF --exclude-dir=.git -e "$HOME" -e "$projects_root" -e "~${projects_root#"$HOME"}/" . | cut -d: -f1,2 || true)
+  [ -z "$hits" ] || { found=1; printf '%s\n' "$hits" | sed 's|^\./||; s|$|: holds a path in the home folder|'; }
+  [ "$found" -eq 0 ] || {
+    echo "shared-vault: the lines above hold a project's private details, and the shared vault is read in every project. Reword each line so it holds for any project (\"a project\", \`~/.claude/…\` for a path). If a word is the name of a tool and not of a project, that needs the user: on their yes, add the word to $vault/.allowed-words." >&2
+    return 1
+  }
+}
+
+case "${1:-}" in
+  path | check)
+    [ -n "$vault" ] && [ -d "$vault" ] || { echo "shared-vault: there is no shared vault yet; run \`wk shared-vault\`" >&2; exit 1; }
+    if [ "$1" = path ]; then echo "$vault"; else check; fi
+    exit
+    ;;
+  "") ;;
+  *) echo "usage: wk shared-vault [path|check]" >&2; exit 2 ;;
+esac
+
+if [ -z "$vault" ]; then
+  vault="$HOME/.local/share/workspace-kit/shared-vault"
+  printf 'shared_vault = "%s"\n' "$vault" >> "$WK_CONFIG"
+  echo "added shared_vault to $WK_CONFIG"
+fi
+
+outside_any_repo() {
+  ! git -C "$1" rev-parse --show-toplevel >/dev/null 2>&1 \
+    || { echo "shared-vault: $vault is inside the git repo $(git -C "$1" rev-parse --show-toplevel); the shared vault lives outside any repo. Set shared_vault in $WK_CONFIG to another folder and run \`wk shared-vault\` again." >&2; exit 1; }
+}
+
+if [ -n "$(ls -A "$vault" 2>/dev/null)" ]; then
+  echo "kept    $vault"
+  if [ ! -e "$vault/.git" ]; then
+    outside_any_repo "$vault"
+    git -C "$vault" init -q
+    echo "started git in $vault"
+  fi
+else
+  mkdir -p "$(dirname "$vault")"
+  outside_any_repo "$(dirname "$vault")"
+  mkdir -p "$vault"
+  cp -R "$kit/templates/vault/." "$kit/templates/shared-vault/." "$vault/"
+  rm -rf "$vault/wiki/_proposals"
+  for page in "$vault"/wiki/*.md; do
+    sed -i '' "s/__DATE__/$(date +%Y-%m-%d)/" "$page"
+  done
+  git -C "$vault" init -q
+  git -C "$vault" add -A .
+  git -C "$vault" commit -q -m "docs(wiki): start the shared vault"
+  echo "created $vault"
+fi
+vault=$(cd "$vault" && pwd -P)
+
+# A commit that holds a project's private details fails, whoever makes it.
+hook="$vault/.git/hooks/pre-commit"
+wanted=$(printf '#!/bin/sh\nexec "%s/bin/wk" shared-vault check\n' "$kit")
+if [ "$(cat "$hook" 2>/dev/null)" != "$wanted" ]; then
+  mkdir -p "$(dirname "$hook")"
+  printf '%s\n' "$wanted" > "$hook"
+  chmod +x "$hook"
+  echo "wrote   $hook"
+fi
+git -C "$vault" config core.hooksPath .git/hooks
+
+settings="$HOME/.claude/settings.json"
+[ -f "$settings" ] || { mkdir -p "$(dirname "$settings")"; echo '{}' > "$settings"; }
+if ! jq -e --arg vault "$vault" '.permissions.additionalDirectories // [] | index($vault)' "$settings" >/dev/null; then
+  backup_dir="$HOME/.claude/backup/$(date +%Y%m%d-%H%M%S)"
+  mkdir -p "$backup_dir"
+  cp "$settings" "$backup_dir/"
+  jq --arg vault "$vault" '.permissions.additionalDirectories = ((.permissions.additionalDirectories // []) + [$vault])' "$settings" > "$settings.new"
+  mv "$settings.new" "$settings"
+  echo "allowed the shared vault in $settings (backup in $backup_dir)"
+fi
+
+orca repo list --json | jq -e --arg vault "$vault" '.result.repos | any(.path == $vault)' >/dev/null \
+  || { orca repo add --path "$vault" --json >/dev/null; echo "added $vault to Orca"; }
+name="Wiki lint: shared"
+if ! orca automations list --json | jq -e --arg name "$name" '.result.automations | any(.name == $name)' >/dev/null; then
+  orca automations create --name "$name" --trigger "0 10 * * 6" --prompt "Run the wiki-lint skill, then stop." \
+    --provider claude --workspace "path:$vault" --fresh-session --enabled --json >/dev/null
+  echo "created automation '$name'"
+fi

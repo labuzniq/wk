@@ -9,6 +9,7 @@ One repeatable setup for every project, built around [Orca](https://orca.dev) an
 - **Idea to tickets.** The agent follows [Matt Pocock's skills](https://github.com/mattpocock/skills) (`ask-matt`, `to-spec`, `to-tickets`, `implement`…) itself; tickets are issues in the project's tracker (GitHub, GitLab or local files), specs live in `docs/specs/`, and a workspace is created when work on a ticket starts.
 - **Review gate.** Before a pull request the agent first gathers proof that the change works (test output, a run of the app, a screenshot) and puts it in the pull request; then the review agents run. Eleven review and build-fix agents from [ECC](https://github.com/affaan-m/ECC), pinned to one commit, with skills preloaded.
 - **Session capture.** Finished sessions are queued and turned into a per-project wiki (the [LLM wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)) by a daily Orca automation.
+- **One shared vault.** Lessons that hold in every project (about Orca, the agents and the kit) go to one vault outside any repo. The same daily automation sorts them there, without project names; a weekly automation lints it.
 
 ## Requirements
 
@@ -41,6 +42,7 @@ Then do the three manual Orca settings in [`docs/orca-settings.md`](docs/orca-se
 | `wk agents-sync` | Install the pinned ECC agents, with their recorded patches |
 | `wk skills-sync` | Install the pinned third-party skills, with their recorded patches |
 | `wk transcript <file>` | Print what was said in a Claude Code transcript |
+| `wk shared-vault [path\|check]` | Create the shared vault or keep the one that is there; print its path; list project names and home paths in it |
 
 ## Checking the kit
 
@@ -61,7 +63,7 @@ agents/          which ECC agents, the pinned commit, the lock file
 skills.txt       which third-party skills and their pinned commits; skills.lock is the lock file
 patches/         recorded patches for third-party skills and agents
 skills/          project-setup, wiki-ingest, wiki-lint
-templates/       project capsule, vault skeleton, Orca workspace rules for the tracker doc
+templates/       project capsule, vault skeleton, shared vault schema, Orca workspace rules for the tracker doc
 test/            `test/run`, the tests, and stand-ins for orca and gh
 docs/            verified facts and the manual Orca checklist
 ```
@@ -82,6 +84,7 @@ knowledge-base/       the vault: raw/ sources and wiki/ pages
 
 - If Orca is not running, Claude Code cannot create worktrees: the kit routes them through Orca on purpose and has no fallback.
 - The wiki automation commits changes under `knowledge-base/` onto the branch the primary checkout is on, and does not push.
+- The shared vault is its own git repo at `~/.local/share/workspace-kit/shared-vault`; `shared_vault` in `~/.config/workspace-kit/config.toml` names another place. The installer creates it once and adds it to `permissions.additionalDirectories` in `~/.claude/settings.json`, so every session can read and write it. Its automations commit inside it and do not push. Every commit there runs `wk shared-vault check`, which fails on the name of a project (a folder under your projects folder, or a project with queued sessions) and on a path written out in your home folder. A tool that shares its name with a project goes into `.allowed-words` in the vault.
 - Third-party skills and agents are installed from their own repos, each pinned to one commit: skills in `skills.txt` (`owner/repo#<commit>`), agents in `agents/agents.toml`. This repo holds none of their text.
 - When a skill or an agent does not fit this setup, it carries a recorded patch: `patches/skills/<name>.patch` or `patches/agents/<name>.patch`, a unified diff with `a/` and `b/` path prefixes (for a skill, paths inside its folder; for an agent, `<name>.md`). `wk skills-sync` and `wk agents-sync` apply it after install. `skills.lock` and `agents/agents.lock` record the checksum before and after, and `wk doctor` reports an install that differs. A patch that no longer applies stops the sync and names the skill or agent. A skill you edited by hand is moved to `~/.claude/backup/` before the pinned one replaces it.
 
