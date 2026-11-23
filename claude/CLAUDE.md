@@ -39,7 +39,25 @@
 - Never force-push main. Ask before discarding uncommitted work.
 
 ## Review gate
-Before opening a PR, and whenever I ask for a review, run `/code-review` and the matching specialists in one parallel batch, then merge, dedupe and rank the findings.
+Before opening a PR, do step 1, then step 2. When I ask for a review and no PR is being opened, do only step 2.
+
+1. Gather proof that the change works. Write the PR body with the `pr` skill and put the proof in its Evidence section. When no proof is possible, write there in one line why not.
+
+   | Kind of change | Proof |
+   |---|---|
+   | bug fix | test output: the new test failing before the change and passing after |
+   | logic or a script | output of the tests that cover the change |
+   | UI (User Interface) | a screenshot or recording of the running app |
+   | CLI (Command Line Interface), hook, server, API (Application Programming Interface) | the command or request that was run, and its output |
+   | build, CI (Continuous Integration), config | output of the build or the check command, run on this machine |
+   | docs or instructions only | run any command the text names; when there is none, no proof is possible |
+   | anything else | the closest of the above: output that shows the changed thing working |
+
+   A change of several kinds gets proof for each kind.
+
+2. Run `/code-review` and the specialists from the table below in one parallel batch, then merge, dedupe and rank the findings. Do this on every PR, even with good proof: the agents check what tests cannot and what needs judgment. When a finding leads to a change in the code, gather the proof again.
+
+Specialists by what changed:
 
 | Changed | Agent |
 |---|---|
