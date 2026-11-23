@@ -1,0 +1,7 @@
+
+Starter checks: what each finding above means and how to fix it.
+  force_unwrapping  `!` crashes the app when the value is nil. Unwrap with `guard let` or `if let`, or give a default with `??`.
+  force_try         `try!` crashes the app when the call throws. Use `do` and `catch`, or mark the function `throws`.
+  force_cast        `as!` crashes the app when the type differs. Use `as?` with `guard let`.
+  empty_catch       An empty `catch` makes the error disappear. Handle the error, throw it again, or log it with the reason it is safe to ignore.
+  debug_print       A `print` left in the code. Delete it, or log through `Logger` (import os) when the line is worth keeping.

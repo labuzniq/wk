@@ -1,0 +1,8 @@
+
+Starter checks: what each finding above means and how to fix it.
+  E722    A bare `except:` catches everything, also Ctrl-C and a typo inside the `try`. Name the exception you expect.
+  BLE001  `except Exception` with no log and no `raise` hides the real error. Catch the one exception you expect, or log it and raise it again.
+  S110    `except ...: pass` throws the error away. Handle it, or log it with the reason it is safe to ignore.
+  T201    A `print` left in the code. Delete it or use `logging`. A script whose printed text is its result lists its file under `[lint.per-file-ignores]` in checks/starter/python.toml.
+  PGH003  `# type: ignore` with no code hides every type error on the line. Fix the type, or name the one error: `# type: ignore[<code>]`.
+  PGH004  `# noqa` with no code switches off every check on the line. Fix the finding, or name the one rule: `# noqa: <rule>`.

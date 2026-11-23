@@ -1,0 +1,8 @@
+
+Starter checks: what each finding above means and how to fix it.
+  noExplicitAny           `any` switches type checking off for everything it touches. Write the real type; when it is not known, use `unknown` and narrow it.
+  noTsIgnore              `@ts-ignore` hides every error on the next line, also future ones. Fix the type error; if it must stay, use `@ts-expect-error` with the reason.
+  noEmptyBlockStatements  An empty block; in a `catch` it makes the error disappear. Handle the error or throw it again. If empty is right, say why in a comment inside the block.
+  noConsole               A `console.log` left in the code. Delete it or use the project's logger; `console.error` and `console.warn` are allowed.
+  noFocusedTests          `.only` stops every other test from running. Remove it.
+  noSkippedTests          A skipped test checks nothing. Make it pass or delete it; never skip a test to get a green run.

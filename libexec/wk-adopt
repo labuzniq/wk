@@ -71,13 +71,26 @@ def stack_commands(stack: str, root: Path) -> dict:
     return {"tools": {}}
 
 
+# The linter behind each stack's starter checks, pinned to the version the configs in templates/checks/starter were tested with.
+STARTER = {
+    "python": "mise x ruff@0.17.6 -- ruff check --config checks/starter/python.toml",
+    "ts": "mise x biome@2.6.8 -- biome lint --config-path=checks/starter/ts.json",
+    "swift": "mise x swiftlint@0.65.1 -- swiftlint lint --strict --quiet --config checks/starter/swift.yml",
+}
+
+
+def starter_command(stack: str) -> str:
+    return f"{STARTER[stack]} || {{ cat checks/starter/{stack}.txt; exit 1; }}"
+
+
 def mise_toml(slug: str, stacks: list[str], root: Path) -> str:
     commands = [stack_commands(s, root) for s in stacks]
     tools = {name: version for c in commands for name, version in c["tools"].items()}
     lines = ["[tools]", *(f'{name} = "{version}"' for name, version in tools.items()), ""]
     lines += ["[env]", '_.file = ".env"', f'PROJECT_SLUG = "{slug}"', ""]
     for task in ("setup", "test", "lint"):
-        lines += [f"[tasks.{task}]", f"run = {toml_list([c[task] for c in commands if task in c])}", ""]
+        runs = [c[task] for c in commands if task in c] + ([starter_command(s) for s in stacks] if task == "lint" else [])
+        lines += [f"[tasks.{task}]", f"run = {toml_list(runs)}", ""]
     lines += ['[tasks."board:sync"]', 'run = "wk board-sync --repo"', "", "[tasks.doctor]", 'run = "wk doctor"', ""]
     return "\n".join(lines)
 
@@ -179,13 +192,29 @@ def allow_vault(settings_file: Path, vault: Path) -> None:
     print(f"allowed the vault in {settings_file}")
 
 
-def write_new(path: Path, text: str) -> None:
+def write_new(path: Path, text: str, name: str = "") -> bool:
     if path.exists():
-        print(f"kept    {path.name}")
-        return
+        print(f"kept    {name or path.name}")
+        return False
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
-    print(f"created {path.name}")
+    print(f"created {name or path.name}")
+    return True
+
+
+def starter_checks(root: Path, stacks: list[str]) -> None:
+    templates = KIT / "templates/checks"
+    wired = (root / "mise.toml").read_text()
+    for stack in stacks:
+        files = sorted(templates.glob(f"starter/{stack}.*"))
+        created = [write_new(root / "checks/starter" / f.name, f.read_text(), f"checks/starter/{f.name}") for f in files]
+        if any(created):
+            checks = re.findall(r"^  (\S+) ", (root / f"checks/starter/{stack}.txt").read_text(), re.MULTILINE)
+            print(f"added starter checks for {stack}: {', '.join(checks)}")
+        if f"checks/starter/{stack}." not in wired:
+            print(f"kept    mise.toml: its lint task does not run the starter checks for {stack}; add this command to the run list of [tasks.lint]: {starter_command(stack)}")
+    if stacks:
+        write_new(root / "checks/README.md", (templates / "README.md").read_text(), "checks/README.md")
 
 
 def main() -> None:
@@ -212,8 +241,11 @@ def main() -> None:
     run("orca", "repo", "set-base-ref", "--repo", f"id:{repo_id}", "--ref", base, "--json")
 
     write_new(root / ".workspace-kit.toml", manifest(slug, args.type, stacks, repo_id))
+    if args.stack is None:  # a manifest that was kept names the stacks; the doctor reads them from there too
+        stacks = [s for s in tomllib.loads((root / ".workspace-kit.toml").read_text()).get("stack", stacks) if s in STACKS]
     write_new(root / "mise.toml", mise_toml(slug, stacks, root))
     write_new(root / "orca.yaml", ORCA_YAML)
+    starter_checks(root, stacks)
     tracker_config(root)
     for template in sorted(p for p in (KIT / "templates/project").rglob("*") if p.is_file()):
         target = root / template.relative_to(KIT / "templates/project")

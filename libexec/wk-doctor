@@ -28,6 +28,12 @@ grep -qs '^\[tasks\.setup\]' "$root/mise.toml" || gap mise "mise.toml has no set
 [ -n "$(manifest_value orca_repo_id)" ] || gap orca_repo "repo is not registered in Orca; run \`wk adopt\`"
 [ -f "$root/orca.yaml" ] && [ -f "$root/.worktreeinclude" ] || gap orca_files "orca.yaml or .worktreeinclude is missing; run \`wk adopt\`"
 grep -qs '^  setup:' "$root/orca.yaml" || gap orca_setup_hook "orca.yaml has no scripts.setup; add \`mise trust -y && mise run setup\`"
+for stack in $(sed -n 's/^stack = //p' "$manifest" | tr -d '[]",'); do
+  case "$stack" in python | ts | swift) ;; *) continue ;; esac
+  [ -f "$root/checks/starter/$stack.txt" ] && grep -qs "checks/starter/$stack\." "$root/mise.toml" && continue
+  gap starter_checks "the lint task does not run the starter checks for $stack (a small lint set for the first mistakes a coding agent makes); run \`wk adopt\`, then add the command it prints to the lint task in mise.toml"
+  break
+done
 
 vision_file=""
 [ -f "$root/VISION.md" ] && vision_file=VISION.md

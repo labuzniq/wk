@@ -165,3 +165,43 @@ gaps() {
   rm CLAUDE.md .worktreeinclude
   is "$(gaps)" "claude_md orca_files"
 }
+
+# old_python_project: a Python project whose mise.toml was written before the starter checks existed.
+old_python_project() {
+  echo '[project]' > pyproject.toml
+  sed -i '' 's/^stack = .*/stack = ["python"]/' .workspace-kit.toml
+  printf '\n[tasks.lint]\nrun = ["uv run ruff check"]\n' >> mise.toml
+}
+
+@test "a project adopted before the starter checks is offered them" {
+  old_python_project
+  run "$kit/bin/wk" doctor
+  is "$output" 'starter_checks: the lint task does not run the starter checks for python (a small lint set for the first mistakes a coding agent makes); run `wk adopt`, then add the command it prints to the lint task in mise.toml'
+}
+
+@test "starter checks that exist but are not in the lint task are a gap, until the printed command is added" {
+  old_python_project
+  command=$("$kit/libexec/wk-adopt" | sed -n 's/.*add this command to the run list of \[tasks.lint\]: //p')
+  is "$(gaps)" "starter_checks"
+  sed -i '' "s~^run = \[\"uv run ruff check\"\]~run = [\"uv run ruff check\", \"$command\"]~" mise.toml
+  is "$(gaps)" ""
+  run "$kit/libexec/wk-adopt"
+  [[ "$output" != *"does not run the starter checks"* ]]
+}
+
+@test "a lint task that names starter checks whose files are gone is a gap" {
+  old_python_project
+  echo 'run = ["ruff check --config checks/starter/python.toml"]' >> mise.toml
+  is "$(gaps)" "starter_checks"
+}
+
+@test "a stack the kit has no starter checks for is no gap" {
+  sed -i '' 's/^stack = .*/stack = ["rust"]/' .workspace-kit.toml
+  is "$(gaps)" ""
+}
+
+@test "the starter checks can be skipped with a reason" {
+  old_python_project
+  echo 'starter_checks = "this project lints in CI only"' >> .workspace-kit.toml
+  is "$(gaps)" ""
+}

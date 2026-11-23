@@ -1,0 +1,6 @@
+# Starter checks for Python, run by the lint task in mise.toml. Each rule is explained in python.txt.
+[lint]
+select = ["E722", "BLE001", "S110", "T201", "PGH003", "PGH004"]
+
+[lint.flake8-bandit]
+check-typed-exception = true

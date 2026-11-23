@@ -62,7 +62,7 @@ agents/          which ECC agents, the pinned commit, the lock file
 skills.txt       which third-party skills and their pinned commits; skills.lock is the lock file
 patches/         recorded patches for third-party skills and agents
 skills/          project-setup, wiki-ingest, wiki-lint
-templates/       project capsule, vault skeleton, Orca workspace rules for the tracker doc
+templates/       project capsule, starter checks, vault skeleton, Orca workspace rules for the tracker doc
 test/            `test/run`, the tests, and stand-ins for orca and gh
 docs/            verified facts and the manual Orca checklist
 ```
@@ -72,6 +72,7 @@ docs/            verified facts and the manual Orca checklist
 ```
 .workspace-kit.toml   manifest: slug, stack, Orca repo id, vault path, skipped checks
 mise.toml             tools and tasks: setup, test, lint
+checks/               starter checks for the stack, run by the lint task; the project's own checks go beside them
 orca.yaml             setup script Orca runs in each new worktree
 .worktreeinclude      local files Orca copies into new worktrees
 docs/agents/          where tickets, triage labels and domain docs live
@@ -81,6 +82,7 @@ knowledge-base/       the vault: raw/ sources and wiki/ pages
 
 ## Good to know
 
+- Starter checks: `wk adopt` writes a small lint set per stack into `checks/starter/` (ruff for Python, Biome for TypeScript, SwiftLint for Swift) and adds one command per stack to the lint task. It catches the first mistakes a coding agent makes: swallowed errors, `any` and `@ts-ignore`, debug prints, force unwraps, skipped tests, switched-off checks. When a check fails, the lint task prints what the real problem is and how to fix it. The project's own linter config is not touched. In a `mise.toml` that was already there, `wk adopt` prints the command and `wk doctor` reports `starter_checks` until the lint task runs it.
 - If Orca is not running, Claude Code cannot create worktrees: the kit routes them through Orca on purpose and has no fallback.
 - The wiki automation commits changes under `knowledge-base/` onto the branch the primary checkout is on, and does not push.
 - Third-party skills and agents are installed from their own repos, each pinned to one commit: skills in `skills.txt` (`owner/repo#<commit>`), agents in `agents/agents.toml`. This repo holds none of their text.

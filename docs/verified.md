@@ -154,3 +154,17 @@ This replaces "in an existing repo with history it asks once" from the change of
 - Before the merge, Orca already knows the repo (`orca repo add`, `orca repo set-base-ref`): a worktree cannot be created without it.
 - confirmed with stand-ins for `orca` and `gh`. The Orca and gh calls it makes (`orca worktree create --repo --name --no-parent --setup skip --comment --json`, `orca worktree set --pr --workspace-status`, `gh pr create`, `gh pr view --json state`, `gh pr list --head`, `gh repo view --json owner`, `gh api user`) were each used by hand on this Mac the same day or are read in `--help`.
 - open: one whole run of `wk adopt-pr` against a real repo on GitHub.
+
+## Starter checks (2026-11-23)
+
+Each config in `templates/checks/starter/` was run on this Mac in a throwaway project: once on a file with every mistake, once on a clean file.
+
+- confirmed: `mise x <tool>@<version> -- <command>` downloads the tool on first use and runs it with no `[tools]` entry; tested with mise 2026.11.12 for `ruff@0.17.6`, `biome@2.6.8` and `swiftlint@0.65.1`. The starter command in the lint task is therefore one line that needs nothing from the project.
+- confirmed: `mise run lint` runs each entry of a `run` list through a shell, so `<linter> || { cat <messages>; exit 1; }` prints the messages and fails the task. Tested for all three stacks after a real `wk adopt` in a throwaway HOME.
+- confirmed (ruff 0.17.6): `ruff check --config checks/starter/python.toml` uses only that file, also when `pyproject.toml` has its own `[tool.ruff]`. The file may have any name that ends in `.toml`. Paths under `[lint.per-file-ignores]` are relative to the folder ruff runs in. `S110` reports `except ValueError: pass` only with `check-typed-exception = true`. All six rules fired; the clean file passed.
+- confirmed (Biome 2.6.8): a file named `biome.json` in a subfolder stops the run with "Found a nested root configuration"; a file with another name, given as `--config-path=checks/starter/ts.json`, works, also beside a `biome.json` at the root. `"recommended": false` prints a deprecation warning; `"preset": "none"` is the current form. With `vcs.useIgnoreFile` the files in `.gitignore` are not checked. All six rules fired; the clean file passed.
+- confirmed (SwiftLint 0.65.1): `excluded` paths are relative to the config file, not to the folder SwiftLint runs in. `--strict` makes a finding exit with a code other than 0. With `--config`, a `.swiftlint.yml` at the root is not read. `match_kinds: identifier` keeps the `print` rule quiet in strings and comments. All five rules fired; the clean file passed.
+- ruff cannot change the text of a rule's message, and SwiftLint only for its custom rules. So each stack has a messages file that the lint task prints on failure, after the linter's own lines.
+- open: the starter command inside an Orca worktree and in a project's CI (Continuous Integration); both need `mise` and network on the first run. Not tested: it needs a real adopted project.
+- open: Biome and SwiftLint on a large real project (noise from `noEmptyBlockStatements` on empty functions, speed). Tested on throwaway files only.
+- The tests in `test/` check the files, the lint task and the gap line; they do not run the linters, so they need no network.
