@@ -36,7 +36,7 @@ else
 fi
 
 [ -f "$root/docs/agents/issue-tracker.md" ] || gap matt_setup "no docs/agents/issue-tracker.md; run \`wk adopt\`"
-grep -qs '^## Orca workspaces' "$root/docs/agents/issue-tracker.md" || gap tracker "docs/agents/issue-tracker.md treats Orca workspaces as tickets; delete it and run \`wk adopt\`, so tickets are issues and a workspace is created only when work starts"
+[ ! -f "$root/docs/agents/issue-tracker.md" ] || grep -q '^## Orca workspaces' "$root/docs/agents/issue-tracker.md" || gap tracker "docs/agents/issue-tracker.md treats Orca workspaces as tickets; delete it and run \`wk adopt\`, so tickets are issues and a workspace is created only when work starts"
 [ -f "$(vault_dir)/wiki/overview.md" ] || gap vault_page "no $(manifest_value vault)/wiki/overview.md in the vault; run \`wk adopt\`"
 
 for skill in "$HOME/.agents/skills"/*/; do

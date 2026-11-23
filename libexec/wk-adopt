@@ -6,6 +6,7 @@
 import argparse
 import datetime
 import json
+import re
 import shutil
 import subprocess
 import tomllib
@@ -84,14 +85,16 @@ ORCA_YAML = "scripts:\n  setup: |\n    mise trust -y && mise run setup\n"
 
 
 def tracker_kind(root: Path) -> str:
-    remotes = run("git", "-C", str(root), "remote", "-v")
-    return next((kind for kind in ("github", "gitlab") if kind in remotes), "local")
+    url = subprocess.run(["git", "-C", str(root), "config", "--get", "remote.origin.url"], capture_output=True, text=True).stdout.strip()
+    host = re.sub(r"^(\w+://)?([^@/]*@)?", "", url).split("/")[0].split(":")[0]
+    return next((kind for kind in ("github", "gitlab") if kind in host), "local")
 
 
 def tracker_config(root: Path) -> None:
     agents_dir = root / "docs/agents"
     tracker = (MATT_SETUP / f"issue-tracker-{tracker_kind(root)}.md").read_text()
-    write_new(agents_dir / "issue-tracker.md", tracker.rstrip("\n") + "\n" + (KIT / "templates/orca-workspaces.md").read_text())
+    workspaces = (KIT / "templates/orca-workspaces.md").read_text()
+    write_new(agents_dir / "issue-tracker.md", tracker.rstrip("\n") + "\n" + workspaces)
     for seed in ("triage-labels.md", "domain.md"):
         write_new(agents_dir / seed, (MATT_SETUP / seed).read_text())
     claude_md = root / "CLAUDE.md"

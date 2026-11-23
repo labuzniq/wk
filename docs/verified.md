@@ -51,7 +51,7 @@ None of these would make an agent fail, so no patch is planned.
 | Spec | Reality | What the kit will do |
 |---|---|---|
 | 3.2 #5: setup command typed by hand in Orca Settings per repository | `orca.yaml` `scripts.setup` works | The capsule template carries `scripts.setup`. The manual step and the marker file go away; the `orca_setup_hook` check reads `orca.yaml`. |
-| 5.2 implies a new card may be `todo` | New cards start `in-progress` | Ticket creation always sets `todo` right after create. |
+| 5.2 implies a new card may be `todo` | New cards start `in-progress` | Replaced on 2026-11-23: tickets are issues, see the last section. |
 | 4.2: do not preload `code-review` because subagents cannot fan out | Subagents can spawn subagents | Keep `code-review` in the main session anyway; the stated reason no longer holds. |
 | 4.5: no skill covers security review | Claude Code ships a built-in `security-review` skill | Nothing added. The owner decides. |
 | 1.3 step 5: skip skill names that are real folders | 23 of 26 are real folders (identical copies) | Skip and report them, unless the owner wants them swapped for symlinks. |
@@ -120,4 +120,3 @@ The first real use of `to-tickets` created 16 empty workspaces and no issue. Orc
 - `wk adopt` now writes `docs/agents/issue-tracker.md` from the tracker doc that `setup-matt-pocock-skills` ships for the repo's remote (GitHub, GitLab, or local files when there is no such remote), followed by the kit's `templates/orca-workspaces.md`.
 - A workspace is created when work on a ticket starts, never to hold a ticket.
 - `wk doctor` has a `tracker` check that reports a tracker doc of the old kind.
-- This replaces the row "Ticket creation always sets `todo` right after create" above.
