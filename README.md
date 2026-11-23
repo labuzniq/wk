@@ -39,6 +39,8 @@ Then do the three manual Orca settings in [`docs/orca-settings.md`](docs/orca-se
 | `wk adopt-pr` | Offer the capsule to an existing repo as a pull request, on a branch in an Orca worktree |
 | `wk doctor` | Print one line per missing piece of the capsule |
 | `wk board-sync [--repo]` | Move Orca cards forward from git and pull request state |
+| `wk self-merge` | In a project that opted in: merge this branch's pull request when checks, proof and review hold |
+| `wk self-merge record` | Store the proof and review result in the pull request body, for `wk self-merge` to read |
 | `wk agents-sync` | Install the pinned ECC agents, with their recorded patches |
 | `wk skills-sync` | Install the pinned third-party skills, with their recorded patches |
 | `wk transcript <file>` | Print what was said in a Claude Code transcript |
@@ -70,7 +72,7 @@ docs/            verified facts and the manual Orca checklist
 ## What a project gets
 
 ```
-.workspace-kit.toml   manifest: slug, stack, Orca repo id, vault path, skipped checks
+.workspace-kit.toml   manifest: slug, stack, Orca repo id, vault path, self-merge flag, skipped checks
 mise.toml             tools and tasks: setup, test, lint
 orca.yaml             setup script Orca runs in each new worktree
 .worktreeinclude      local files Orca copies into new worktrees
@@ -78,6 +80,20 @@ docs/agents/          where tickets, triage labels and domain docs live
 docs/specs/           specs, one section per ticket
 knowledge-base/       the vault: raw/ sources and wiki/ pages
 ```
+
+## Self-merge (off by default)
+
+A project opts in with `self_merge = true` in `.workspace-kit.toml`, merged into its default branch. From then on the agent runs two commands after the review gate:
+
+1. `wk self-merge record --proof attached --findings low --agents code-review,security-reviewer` adds one line to the pull request body: `wk-gate: head=<commit> proof=… findings=… agents=…`. The line holds for that one commit; a new push needs a new review and a new record.
+2. `wk self-merge` merges the pull request (squash) when all of this holds, and completes the card:
+   - **Checks:** at least one check ran and passed on the head commit; none failed, none is still running.
+   - **Proof:** the record says `proof=attached`, and the body has text under `## Evidence`.
+   - **Review:** the record is for the head commit, and its highest open finding is `none` or `low`.
+
+It prints one line: `self-merged pull request #12 (<url>) as 1a2b3c4; to revert: gh pr revert 12`. When a condition fails, it names each one, merges nothing and leaves the card in review. Without the flag it says so and the pull request waits for you, as before.
+
+A pull request never switches this on for itself: the flag is read from GitHub's copy of the default branch. These pull requests always wait for you: one that changes `.workspace-kit.toml`, `orca.yaml` or anything under `.github/`, `.claude/` or `hooks/`; one from a fork, opened by another account, into a branch other than the default one, or a draft. Branch protection still applies: the command never uses `--admin`.
 
 ## Good to know
 

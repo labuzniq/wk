@@ -154,3 +154,19 @@ This replaces "in an existing repo with history it asks once" from the change of
 - Before the merge, Orca already knows the repo (`orca repo add`, `orca repo set-base-ref`): a worktree cannot be created without it.
 - confirmed with stand-ins for `orca` and `gh`. The Orca and gh calls it makes (`orca worktree create --repo --name --no-parent --setup skip --comment --json`, `orca worktree set --pr --workspace-status`, `gh pr create`, `gh pr view --json state`, `gh pr list --head`, `gh repo view --json owner`, `gh api user`) were each used by hand on this Mac the same day or are read in `--help`.
 - open: one whole run of `wk adopt-pr` against a real repo on GitHub.
+
+## Opt-in self-merge (2026-11-23)
+
+- confirmed: `gh pr view --json number,url,state,isDraft,isCrossRepository,baseRefName,headRefOid,changedFiles,statusCheckRollup,author,body` answers in one call (gh 2.88.1, read on pull request #22). A GitHub Actions job is one `statusCheckRollup` entry with `__typename` `CheckRun`, `status` `COMPLETED` and `conclusion` `SUCCESS`.
+- docs: a commit status (not a check run) is an entry with `__typename` `StatusContext` and a `state` of `SUCCESS`, `PENDING`, `FAILURE`, `ERROR` or `EXPECTED` (GitHub GraphQL reference). Not seen on this repo, which has no such status.
+- confirmed: `gh api repos/<owner>/<repo> --jq .default_branch` prints the default branch.
+- confirmed: `gh api -H "Accept: application/vnd.github.raw" "repos/<owner>/<repo>/contents/<file>?ref=<branch>"` prints the file as it is on that branch; a file that is not there exits 1 with `HTTP 404`. `wk self-merge` reads the flag this way, so the copy in the worktree and the copy on the pull request's branch do not count.
+- confirmed: `gh api --paginate repos/<owner>/<repo>/pulls/<number>/files` lists each changed file as `filename`; docs: a moved file also has `previous_filename`, and the list ends at 3,000 files (GitHub REST reference). The command compares the count with `changedFiles` and refuses when they differ.
+- confirmed: `gh api user --jq .login` prints the account `gh` is logged in as.
+- docs: `gh pr merge <number> --squash --match-head-commit <sha>` merges only when the pull request's head is still that commit; `gh pr revert <number>` opens a pull request that undoes a merged one (`--help` of gh 2.88.1).
+- docs: `orca worktree set --worktree id:<id> --workspace-status completed --comment <text> --json` (`--help`); confirmed: `orca worktree current --json` has `id`, `comment` and `isMainWorktree` under `.result.worktree`.
+- open: no real pull request was merged by `wk self-merge`; the merge, the edit of the pull request body and the card update are tested with the stand-ins only, because the ticket forbids a real merge.
+- open: with a merge queue, `gh pr merge` may return before the merge. The command then reports "not merged yet" and leaves the card to `wk board-sync`. Not tested for real.
+- open: a required check that has not reported yet may be missing from `statusCheckRollup`. GitHub's branch protection then refuses the merge, and the command never passes `--admin`; without branch protection such a check is not seen.
+- open: when one check name ran twice on a commit and one run failed, the command counts the failure, even if the later run passed.
+- The record lives in the pull request body, not in a file under the kit's state folder: the owner can see it on GitHub, it survives a new session and a new machine, and it sits next to the proof. It names the reviewed commit, so a record copied from another pull request or left over from before a push does not count.
