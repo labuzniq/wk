@@ -40,3 +40,14 @@ setup() {
   lacks "$output" "created $vault"
   is "$(find "$vault" -path "$vault/.git" -prune -o -type f -exec shasum {} + | sort; cat "$HOME/.claude/settings.json" "$ORCA_STUB/automations.json")" "$before"
 }
+
+@test "with Orca closed everything else is installed and the installer fails with the reason" {
+  mkdir -p "$HOME/.agents/skills/orca-cli" "$HOME/.agents/skills/orca-computer-use" "$HOME/.agents/skills/orchestration"
+  touch "$HOME/.agents/skills/orca-cli/SKILL.md" "$HOME/.agents/skills/orca-computer-use/SKILL.md" "$HOME/.agents/skills/orchestration/SKILL.md"
+  touch "$ORCA_STUB/down"
+  run "$HOME/kit/install.sh"
+  [ "$status" -eq 1 ]
+  has "$output" "Orca did not answer"
+  [ -L "$HOME/.local/bin/wk" ]
+  [ -f "$vault/wiki/learnings.md" ]
+}

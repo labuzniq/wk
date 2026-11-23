@@ -14,7 +14,7 @@ if ! . "$kit/lib/project.sh"; then
 fi
 
 shared_vault=$(wk_config shared_vault 2>/dev/null)
-if [ "$root" = "$shared_vault" ]; then
+if [ -n "$shared_vault" ] && [ "$root" = "$(cd "$shared_vault" 2>/dev/null && pwd -P)" ]; then
   echo "Shared vault: this folder holds the lessons that hold across projects. Its CLAUDE.md is the schema; it gets no capsule."
   exit 0
 fi

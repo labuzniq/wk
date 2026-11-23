@@ -9,8 +9,14 @@ setup() {
   no_shared_vault
   config="$HOME/.config/workspace-kit/config.toml"
   vault="$HOME/.local/share/workspace-kit/shared-vault"
-  mkdir -p "$HOME/projects/acme-shop"
+  adopted "$HOME/projects/acme-shop"
   cd "$HOME" || return 1
+}
+
+# adopted <folder>: a project folder with a capsule manifest, which is how the check knows a project.
+adopted() {
+  mkdir -p "$1"
+  printf 'slug = "%s"\n' "$(basename "$1")" > "$1/.workspace-kit.toml"
 }
 
 # Every file of the vault and of the home's settings, with its checksum, plus what Orca was asked to keep.
@@ -75,9 +81,82 @@ session_start() {
   run "$kit/bin/wk" shared-vault
   [ "$status" -eq 0 ]
   has "$output" "kept    $HOME/notes"
-  is "$(cd "$HOME/notes" && find . -path ./.git -prune -o -type f -print)" "./wiki/learnings.md"
+  has "$output" "added the missing vault files"
   is "$(cat "$HOME/notes/wiki/learnings.md")" "# Mine"
+  is "$(head -1 "$HOME/notes/CLAUDE.md")" "# Shared vault schema"
   [ -d "$HOME/notes/.git" ]
+  is "$("$kit/bin/wk" shared-vault 2>&1)" "kept    $HOME/notes"
+}
+
+@test "the owner's own pre-commit hook in a kept vault is moved aside, not lost" {
+  new_repo "$HOME/notes"
+  echo "# Mine" > "$HOME/notes/CLAUDE.md"
+  printf '#!/bin/sh\necho mine\n' > "$HOME/notes/.git/hooks/pre-commit"
+  echo "shared_vault = \"$HOME/notes\"" >> "$config"
+  run "$kit/bin/wk" shared-vault
+  [ "$status" -eq 0 ]
+  has "$output" "moved your pre-commit hook to $HOME/notes/.git/hooks/pre-commit.before-wk"
+  is "$(tail -1 "$HOME/notes/.git/hooks/pre-commit.before-wk")" "echo mine"
+  is "$(cat "$HOME/notes/CLAUDE.md")" "# Mine"
+}
+
+@test "a global hooks folder does not switch the check off" {
+  git config --global core.hooksPath "$HOME/global-hooks"
+  "$kit/bin/wk" shared-vault
+  [ ! -e "$HOME/global-hooks" ]
+  lesson "In acme-shop the setup failed."
+  run git -C "$vault" commit -m "docs(wiki): ingest"
+  [ "$status" -ne 0 ]
+  has "$output" "names the project 'acme-shop'"
+}
+
+@test "with Orca closed the vault is made, the run fails with the reason, and the doctor keeps the gap until a run with Orca" {
+  adopted_project
+  touch "$ORCA_STUB/down"
+  run "$kit/bin/wk" shared-vault
+  [ "$status" -eq 1 ]
+  has "$output" "created $vault"
+  has "$output" "Orca did not answer"
+  "$kit/bin/wk" doctor > /dev/null # the first run reports the deferred vision once
+  is "$("$kit/bin/wk" doctor | cut -d: -f1)" "shared_vault"
+  rm "$ORCA_STUB/down"
+  run "$kit/bin/wk" shared-vault
+  [ "$status" -eq 0 ]
+  is "$(jq -r '.[].name' "$ORCA_STUB/automations.json" | grep shared)" "Wiki lint: shared"
+  is "$("$kit/bin/wk" doctor)" ""
+}
+
+@test "a vault moved to another place names the automation that still runs in the old one" {
+  "$kit/bin/wk" shared-vault
+  sed -i '' "s|^shared_vault = .*|shared_vault = \"$HOME/elsewhere\"|" "$config"
+  run "$kit/bin/wk" shared-vault
+  [ "$status" -eq 1 ]
+  has "$output" "the automation 'Wiki lint: shared' still runs in $vault"
+}
+
+@test "a path that is not written in full is refused" {
+  echo 'shared_vault = "~/notes"' >> "$config"
+  run "$kit/bin/wk" shared-vault
+  [ "$status" -eq 1 ]
+  has "$output" "write it as a full path"
+  [ ! -e "$HOME/~" ]
+}
+
+@test "a config file without a last line break stays readable" {
+  printf 'projects_root = "%s"\nkit = "%s"' "$HOME/projects" "$HOME/kit" > "$config"
+  "$kit/bin/wk" shared-vault
+  is "$(sed -n 's/^kit = "\(.*\)"$/\1/p' "$config")" "$HOME/kit"
+  is "$("$kit/bin/wk" shared-vault path)" "$vault"
+}
+
+@test "a vault behind a link is still known to session start" {
+  mkdir "$HOME/real"
+  ln -s "$HOME/real" "$HOME/link"
+  echo "shared_vault = \"$HOME/link/vault\"" >> "$config"
+  "$kit/bin/wk" shared-vault
+  is "$("$kit/bin/wk" shared-vault path)" "$HOME/real/vault"
+  run session_start "$HOME/real/vault"
+  is "${output%%:*}" "Shared vault"
 }
 
 @test "a place inside a repo is refused" {
@@ -118,9 +197,37 @@ session_start() {
   is "$(git -C "$vault" rev-list --count HEAD)" 1
 }
 
+@test "with no project at all the check passes" {
+  rm -rf "$HOME/projects/acme-shop"
+  "$kit/bin/wk" shared-vault
+  lesson "Orca is fine."
+  run "$kit/bin/wk" shared-vault check
+  [ "$status" -eq 0 ]
+  is "$output" ""
+}
+
+@test "a folder that only groups projects is not a project name, a project inside it is" {
+  "$kit/bin/wk" shared-vault
+  adopted "$HOME/projects/work/Big-Co"
+  lesson $'The setup script did not work at first.\nFor big-co the hook was slow.'
+  run "$kit/bin/wk" shared-vault check
+  [ "$status" -eq 1 ]
+  is "$(printf '%s\n' "$output" | head -1)" "wiki/howto/lesson.md:2: names the project 'Big-Co'"
+  lacks "$output" "lesson.md:1"
+}
+
+@test "a project name with characters that mean something to sed is reported as it is" {
+  "$kit/bin/wk" shared-vault
+  adopted "$HOME/projects/r&d|lab"
+  lesson "The r&d|lab repo broke."
+  run "$kit/bin/wk" shared-vault check
+  [ "$status" -eq 1 ]
+  has "$output" "lesson.md:1: names the project 'r&d|lab'"
+}
+
 @test "a project that is known only from its session queue is found too" {
   "$kit/bin/wk" shared-vault
-  mkdir -p "$state/sessions/sideproject/queue" "$state/sessions/no-capture"
+  mkdir -p "$state/sessions/sideproject/queue" "$state/sessions/no-capture/queue-like"
   lesson "The hook of sideproject was slow; no-capture is a folder of the kit."
   run "$kit/bin/wk" shared-vault check
   [ "$status" -eq 1 ]
@@ -138,11 +245,11 @@ session_start() {
 
 @test "a word the owner allowed is not a private detail" {
   "$kit/bin/wk" shared-vault
-  mkdir "$HOME/projects/orca"
+  adopted "$HOME/projects/orca"
   lesson "Orca copies .worktreeinclude files."
   run "$kit/bin/wk" shared-vault check
   [ "$status" -eq 1 ]
-  has "$output" ".allowed-words"
+  has "$output" "goes to the project's vault instead"
   echo "orca" > "$vault/.allowed-words"
   run "$kit/bin/wk" shared-vault check
   [ "$status" -eq 0 ]
@@ -170,9 +277,10 @@ session_start() {
   adopted_project
   "$kit/bin/wk" doctor > /dev/null # the first run reports the deferred vision once
   run "$kit/bin/wk" doctor
-  is "$output" "shared_vault: no shared vault for lessons across projects; run \`wk shared-vault\`"
+  has "$output" "shared_vault: the shared vault for lessons across projects, or its lint automation, is not set up; run \`wk shared-vault\`"
   run session_start "$project"
   has "$output" "Shared vault: none yet"
+  rm "$ORCA_STUB/down"
   "$kit/bin/wk" shared-vault
   is "$("$kit/bin/wk" doctor)" ""
 }

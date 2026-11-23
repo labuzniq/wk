@@ -42,7 +42,8 @@ fi
 [ -f "$root/docs/agents/issue-tracker.md" ] || gap matt_setup "no docs/agents/issue-tracker.md; run \`wk adopt\`"
 [ ! -f "$root/docs/agents/issue-tracker.md" ] || grep -q '^## Orca workspaces' "$root/docs/agents/issue-tracker.md" || gap tracker "docs/agents/issue-tracker.md treats Orca workspaces as tickets; delete it and run \`wk adopt\`, so tickets are issues and a workspace is created only when work starts"
 [ -f "$(vault_dir)/wiki/overview.md" ] || gap vault_page "no $(manifest_value vault)/wiki/overview.md in the vault; run \`wk adopt\`"
-shared_vault=$(wk_config shared_vault 2>/dev/null) && [ -d "$shared_vault/wiki" ] || gap shared_vault "no shared vault for lessons across projects; run \`wk shared-vault\`"
+shared_vault=$(wk_config shared_vault 2>/dev/null) && [ -f "$shared_vault/CLAUDE.md" ] && [ "$(cat "$state_dir/shared-vault-ready" 2>/dev/null)" = "$shared_vault" ] \
+  || gap shared_vault "the shared vault for lessons across projects, or its lint automation, is not set up; run \`wk shared-vault\` (Orca must be running)"
 
 for skill in "$HOME/.agents/skills"/*/; do
   [ -d "$skill" ] || continue

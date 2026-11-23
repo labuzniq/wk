@@ -3,6 +3,9 @@
 set -euo pipefail
 printf '%s\n' "$*" >> "$ORCA_STUB/calls"
 
+# With $ORCA_STUB/down, Orca is closed: the two list commands fail as `status` does.
+case "$1 ${2:-}" in "repo list" | "automations list") [ ! -f "$ORCA_STUB/down" ] || { echo "orca stand-in: Orca is not running" >&2; exit 1; } ;; esac
+
 case "$1 ${2:-}" in
   "status --json") [ ! -f "$ORCA_STUB/down" ] ;;
   "worktree current") cat "$ORCA_STUB/current.json" ;;

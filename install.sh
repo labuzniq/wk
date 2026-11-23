@@ -63,9 +63,13 @@ for source in "$HOME/.agents/skills"/*/ "$kit/skills"/*/; do
 done
 
 "$kit/bin/wk" agents-sync
-"$kit/bin/wk" shared-vault
 
 mkdir -p "$HOME/.local/bin"
 link "$kit/bin/wk" "$HOME/.local/bin/wk"
 
+# Last, so that a closed Orca leaves everything above installed.
+shared_vault=0
+"$kit/bin/wk" shared-vault || shared_vault=$?
+
 cat "$kit/docs/orca-settings.md"
+exit "$shared_vault"

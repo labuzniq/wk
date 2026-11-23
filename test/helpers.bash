@@ -26,7 +26,9 @@ setup_home() {
   printf 'projects_root = "%s"\nkit = "%s"\n' "$HOME/projects" "$HOME/kit" > "$HOME/.config/workspace-kit/config.toml"
   # A stand-in shared vault, so the doctor has no gap; `no_shared_vault` takes it away again.
   printf 'shared_vault = "%s"\n' "$HOME/shared-vault" >> "$HOME/.config/workspace-kit/config.toml"
-  mkdir -p "$HOME/shared-vault/wiki"
+  mkdir -p "$HOME/shared-vault" "$state"
+  touch "$HOME/shared-vault/CLAUDE.md"
+  echo "$HOME/shared-vault" > "$state/shared-vault-ready"
 
   # The installed kit: the real templates, and a lock file that matches one stand-in agent.
   mkdir -p "$HOME/kit/agents" "$HOME/.claude/agents/ecc" "$HOME/.claude/skills"
@@ -48,7 +50,7 @@ setup_home() {
 
 # no_shared_vault: the home of a kit installed before the shared vault existed.
 no_shared_vault() {
-  rm -rf "$HOME/shared-vault"
+  rm -rf "$HOME/shared-vault" "$state/shared-vault-ready"
   sed -i '' '/^shared_vault = /d' "$HOME/.config/workspace-kit/config.toml"
 }
 
