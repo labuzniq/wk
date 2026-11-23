@@ -87,7 +87,7 @@ None of these would make an agent fail, so no patch is planned.
 ## Phase 5 results (2026-11-23)
 
 - `setup-matt-pocock-skills` stores its tracker choice in `docs/agents/issue-tracker.md`; the `matt_setup` check looks for that file.
-- The `vision` skill may write the vision into `STRATEGY.md` instead of `VISION.md`; the `vision` check accepts either.
+- The `vision` skill may write the vision into `STRATEGY.md` instead of `VISION.md`; the `vision` check accepts either. It did so in this repo, because no `VISION.md` existed; on 2026-11-23 the file was renamed to `VISION.md`, which is where the global instructions and the session-start hook look.
 - `orca worktree current --json` takes about 1 second, too slow for the session-start hook. `wk board-sync` saves the card to `~/.local/state/workspace-kit/cards/`, and the hook reads that copy. The first session in a new worktree shows "not cached yet".
 - Doctor and session-start hook each ran in under 0.5 seconds on the demo project.
 - `orca_repo` passes when `orca_repo_id` is set in `.workspace-kit.toml` (no Orca call). `orca_setup_hook` passes when `orca.yaml` has `scripts.setup` (no marker file).
