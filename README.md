@@ -6,7 +6,7 @@ One repeatable setup for every project, built around [Orca](https://orca.dev) an
 
 - **Project setup without commands.** On first open, the agent runs `wk adopt`: toolchain (`mise.toml`), worktree setup (`orca.yaml`), tracker config, a knowledge vault and two Orca automations.
 - **Orca owns worktrees and tasks.** Every worktree Claude Code creates becomes an Orca workspace card. Cards move to `in-progress`, `in-review` and `completed` from commits and pull request state, after every agent turn.
-- **Idea to tickets.** The agent follows [Matt Pocock's skills](https://github.com/mattpocock/skills) (`ask-matt`, `to-spec`, `to-tickets`, `implement`…) itself; tickets are Orca cards, specs live in `docs/specs/`.
+- **Idea to tickets.** The agent follows [Matt Pocock's skills](https://github.com/mattpocock/skills) (`ask-matt`, `to-spec`, `to-tickets`, `implement`…) itself; tickets are issues in the project's tracker (GitHub, GitLab or local files), specs live in `docs/specs/`, and a workspace is created when work on a ticket starts.
 - **Review gate.** Eleven review and build-fix agents from [ECC](https://github.com/affaan-m/ECC), pinned to one commit, with skills preloaded.
 - **Session capture.** Finished sessions are queued and turned into a per-project wiki (the [LLM wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)) by a daily Orca automation.
 
@@ -50,7 +50,7 @@ hooks/           session-start, stop, session queue, worktree create and remove
 bin/wk           the CLI; commands live in libexec/
 agents/          which ECC agents, the pinned commit, the lock file
 skills/          project-setup, wiki-ingest, wiki-lint
-templates/       project capsule, vault skeleton, Orca tracker description
+templates/       project capsule, vault skeleton, Orca workspace rules for the tracker doc
 docs/            verified facts and the manual Orca checklist
 ```
 

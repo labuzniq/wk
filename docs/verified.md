@@ -51,7 +51,7 @@ None of these would make an agent fail, so no patch is planned.
 | Spec | Reality | What the kit will do |
 |---|---|---|
 | 3.2 #5: setup command typed by hand in Orca Settings per repository | `orca.yaml` `scripts.setup` works | The capsule template carries `scripts.setup`. The manual step and the marker file go away; the `orca_setup_hook` check reads `orca.yaml`. |
-| 5.2 implies a new card may be `todo` | New cards start `in-progress` | Ticket creation always sets `todo` right after create. |
+| 5.2 implies a new card may be `todo` | New cards start `in-progress` | Replaced on 2026-11-23: tickets are issues, see the last section. |
 | 4.2: do not preload `code-review` because subagents cannot fan out | Subagents can spawn subagents | Keep `code-review` in the main session anyway; the stated reason no longer holds. |
 | 4.5: no skill covers security review | Claude Code ships a built-in `security-review` skill | Nothing added. The owner decides. |
 | 1.3 step 5: skip skill names that are real folders | 23 of 26 are real folders (identical copies) | Skip and report them, unless the owner wants them swapped for symlinks. |
@@ -112,3 +112,11 @@ The owner: setup and the spec flow must run without typed commands. This replace
 - Gaps: the agent fixes them without asking. Only `vision`, `vision_fresh` and `proposals` need the user, and they are raised after the user's request is handled.
 - `orca.yaml` no longer shares `node_modules` between worktrees; each worktree installs its own.
 - `~/.claude/settings.json` had a `skillOverrides` block that switched 25 kit skills "off", which hid them from the slash menu and from the model. `install.sh` now removes the override for every skill the kit installs.
+
+## Tickets are issues, not workspaces (2026-11-23)
+
+The first real use of `to-tickets` created 16 empty workspaces and no issue. Orca's own model: a ticket is an issue (GitHub, GitLab, Linear or Jira, shown in its Issues view), and a workspace is a worktree linked to one with `orca worktree create --issue <number>`.
+
+- `wk adopt` now writes `docs/agents/issue-tracker.md` from the tracker doc that `setup-matt-pocock-skills` ships for the repo's remote (GitHub, GitLab, or local files when there is no such remote), followed by the kit's `templates/orca-workspaces.md`.
+- A workspace is created when work on a ticket starts, never to hold a ticket.
+- `wk doctor` has a `tracker` check that reports a tracker doc of the old kind.
