@@ -8,6 +8,16 @@ case "$1 ${2:-}" in
   "worktree current") cat "$ORCA_STUB/current.json" ;;
   "worktree list") cat "$ORCA_STUB/list.json" ;;
   "worktree set" | "repo set-base-ref") ;;
+  "worktree create")
+    # Makes a real git worktree of the repo in the current folder, as Orca would.
+    name=""
+    while [ $# -gt 1 ]; do
+      [ "$1" != --name ] || name="$2"
+      shift
+    done
+    git worktree add -q -b "test/$name" "$HOME/worktrees/$name" >&2
+    jq -cn --arg path "$HOME/worktrees/$name" '{result: {worktree: {id: "repo-1::\($path)", path: $path}}}'
+    ;;
   "repo list") jq -c '{result: {repos: .}}' "$ORCA_STUB/repos.json" ;;
   "repo add")
     jq -c --arg path "$4" '. + [{id: "repo-\(length + 1)", path: $path}]' "$ORCA_STUB/repos.json" > "$ORCA_STUB/repos.json.new"
