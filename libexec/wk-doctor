@@ -5,6 +5,8 @@ set -euo pipefail
 . "$(dirname "$0")/../lib/project.sh" || exit 0
 # shellcheck source=../lib/config.sh
 . "$(dirname "$0")/../lib/config.sh"
+# shellcheck source=../lib/checksum.sh
+. "$(dirname "$0")/../lib/checksum.sh"
 
 [ -f "$manifest" ] || { echo "manifest: no .workspace-kit.toml; run \`wk adopt\`"; exit 0; }
 
@@ -46,10 +48,29 @@ for skill in "$HOME/.agents/skills"/*/; do
   [ -e "$HOME/.claude/skills/$(basename "$skill")/SKILL.md" ] || { gap skills_visible "$(basename "$skill") is not visible to Claude Code; re-run install.sh"; break; }
 done
 
-lock="$(wk_config kit)/agents/agents.lock"
+kit_dir=$(wk_config kit)
+skills_lock="$kit_dir/skills.lock"
+if locked_skills=$(jq -r '.skills | keys | join(" ")' "$skills_lock" 2>/dev/null); then
+  # shellcheck disable=SC2086 # one skill name per word; skills-sync allows no other characters in a name
+  [ -z "$locked_skills" ] || [ "$(skills_sha256 $locked_skills)" = "$(jq -r '.installed_sha256' "$skills_lock")" ] \
+    || gap skills "installed skills differ from skills.lock; run \`wk skills-sync\`"
+else
+  gap skills "skills.lock is missing or broken; run \`wk skills-sync\`"
+fi
+
+lock="$kit_dir/agents/agents.lock"
 expected=$(jq -r '.agents | to_entries[] | .value.installed_sha256 + "  " + .key' "$lock" | sort)
 actual=$(cd "$HOME/.claude/agents/ecc" 2>/dev/null && shasum -a 256 -- *.md | sed 's/\.md$//' | sort)
 [ "$expected" = "$actual" ] || gap agents "installed ECC agents differ from agents.lock; run \`wk agents-sync\`"
+
+for patch in "$kit_dir"/patches/skills/*.patch "$kit_dir"/patches/agents/*.patch; do
+  [ -f "$patch" ] || continue
+  kind=$(basename "$(dirname "$patch")")
+  name=$(basename "$patch" .patch)
+  case "$kind" in skills) patch_lock=$skills_lock ;; *) patch_lock=$lock ;; esac
+  recorded=$(jq -r --arg kind "$kind" --arg name "$name" '.[$kind][$name].patch_sha256 // ""' "$patch_lock" 2>/dev/null || true)
+  [ "$(shasum -a 256 < "$patch" | cut -d' ' -f1)" = "$recorded" ] || gap patches "patches/$kind/$name.patch is not applied; run \`wk $kind-sync\`"
+done
 
 proposals=$(ls "$(vault_dir)/wiki/_proposals"/*.md 2>/dev/null || true)
 [ -z "$proposals" ] || gap proposals "needs the user: show each pending proposal and ask apply or reject: ${proposals//$'\n'/ }"

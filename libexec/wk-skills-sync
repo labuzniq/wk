@@ -1,0 +1,133 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# ///
+"""Install the third-party skills named in skills.txt at their pinned commits, apply recorded patches, write skills.lock."""
+import datetime
+import json
+import re
+import shutil
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+import patches
+
+HOME = Path.home()
+KIT = Path(tomllib.loads((HOME / ".config/workspace-kit/config.toml").read_text())["kit"])
+SKILLS_DIR = HOME / ".agents/skills"
+LOCK = KIT / "skills.lock"
+BACKUP_DIR = HOME / ".claude/backup" / f"{datetime.datetime.now():%Y%m%d-%H%M%S}-skills"
+INSTALLER = "skills@1.9.0"
+
+
+def pins() -> list[tuple[str, str, list[str]]]:
+    found = []
+    for line in (KIT / "skills.txt").read_text().splitlines():
+        if not line.strip():
+            continue
+        package_ref, *skills = line.split()
+        package, _, commit = package_ref.partition("#")
+        if not re.fullmatch(r"[\w.-]+/[\w.-]+", package):
+            sys.exit(f"skills-sync: '{package}' is not a package; write it as owner/repo#<commit> in skills.txt")
+        if not commit:
+            sys.exit(f"skills-sync: {package} has no pin; write it as {package}#<commit> in skills.txt")
+        if not re.fullmatch(r"[0-9a-f]{40}", commit):
+            sys.exit(f"skills-sync: '{commit}' is not a full commit; pin {package} to all 40 characters of one")
+        for name in skills:
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name):
+                sys.exit(f"skills-sync: '{name}' is not a skill name; fix the {package} line in skills.txt")
+        found.append((package, commit, skills))
+    return found
+
+
+def checksum(names: list[str]) -> str:
+    """The value `skills_sha256` in lib/checksum.sh computes: shasum lines of every file, sorted."""
+    lines = [
+        f"{patches.sha256(path.read_bytes())}  {name}/{path.relative_to(SKILLS_DIR / name).as_posix()}\n"
+        for name in names
+        for path in (SKILLS_DIR / name).rglob("*")
+        if path.is_file() and not path.is_symlink() and path.name != ".DS_Store"
+    ]
+    return patches.sha256("".join(sorted(lines)).encode())
+
+
+def is_current(name: str, locked: dict | None, wanted: dict) -> bool:
+    return (
+        locked is not None
+        and all(locked.get(key) == wanted.get(key) for key in ("source", "commit", "patch_sha256"))
+        and (SKILLS_DIR / name).is_dir()
+        and checksum([name]) == locked["installed_sha256"]
+    )
+
+
+def make_room(name: str, locked: dict | None) -> None:
+    """Remove the folder before a fresh install; back it up first when the lock file cannot bring it back."""
+    folder = SKILLS_DIR / name
+    if not folder.exists():
+        return
+    if locked is None or checksum([name]) != locked["installed_sha256"]:
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.move(folder, BACKUP_DIR / name)
+        print(f"skills-sync: backed up {name} to {BACKUP_DIR / name}")
+    else:
+        shutil.rmtree(folder)
+
+
+def install(package: str, commit: str, names: list[str]) -> None:
+    try:
+        subprocess.run(
+            ["npx", "--yes", INSTALLER, "add", f"{package}#{commit}", "-g", "-a", "universal", "-a", "claude-code",
+             *(arg for name in names for arg in ("-s", name)), "-y"],
+            check=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError:
+        sys.exit(f"skills-sync: `npx {INSTALLER} add {package}#{commit}` failed; its own message is above")
+
+
+def main() -> None:
+    locked = json.loads(LOCK.read_text())["skills"] if LOCK.exists() else {}
+    lock = {}
+    for package, commit, names in pins():
+        wanted = {}
+        for name in names:
+            patch = patches.patch_for(KIT, "skills", name)
+            wanted[name] = {"source": package, "commit": commit} | ({"patch_sha256": patches.sha256(patch.read_bytes())} if patch else {})
+        stale = [name for name in names if not is_current(name, locked.get(name), wanted[name])]
+        for name in stale:
+            make_room(name, locked.get(name))
+        if stale:
+            install(package, commit, stale)
+        for name in names:
+            was = locked.get(name)
+            if name not in stale:
+                lock[name] = was
+                continue
+            if not (SKILLS_DIR / name / "SKILL.md").exists():
+                sys.exit(f"skills-sync: {package} at {commit} has no skill '{name}'; fix skills.txt")
+            upstream = checksum([name])
+            if was and (was["source"], was["commit"]) == (package, commit) and was["upstream_sha256"] != upstream:
+                sys.exit(
+                    f"skills-sync: {name} from {package} at {commit} differs from the text skills.lock recorded for that commit; "
+                    "nothing was recorded. Compare the two, then move the pin or delete the entry from skills.lock."
+                )
+            print(f"skills-sync: installed {name} at {commit[:10]}")
+            patch = patches.patch_for(KIT, "skills", name)
+            if patch:
+                patches.apply(patch, SKILLS_DIR / name, f"skills-sync: skill {name}")
+                print(f"skills-sync: patched {name} with {patch.relative_to(KIT)}")
+            lock[name] = wanted[name] | {"upstream_sha256": upstream, "installed_sha256": checksum([name])}
+
+    for name in sorted(set(locked) - set(lock)):
+        print(f"skills-sync: {name} is no longer in skills.txt; it stays installed, remove {SKILLS_DIR / name} by hand")
+    text = json.dumps({"installed_sha256": checksum(sorted(lock)), "skills": lock}, indent=2) + "\n"
+    if not LOCK.exists() or LOCK.read_text() != text:
+        LOCK.write_text(text)
+        print(f"skills-sync: wrote {LOCK}")
+    print(f"skills-sync: {len(lock)} skills in {SKILLS_DIR}")
+
+
+main()

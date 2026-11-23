@@ -122,9 +122,19 @@ gaps() {
   is "$(gaps)" "skills_visible"
 }
 
-@test "a machine with no shared skills folder has no skills gap" {
+@test "a machine with no shared skills folder reports the locked skills, not a skill named *" {
   rm -r "$HOME/.agents" "$HOME/.claude/skills"
-  is "$(gaps)" ""
+  is "$(gaps)" "skills"
+}
+
+@test "an installed skill that differs from the lock file is a gap" {
+  echo "edited" >> "$HOME/.agents/skills/setup-matt-pocock-skills/SKILL.md"
+  is "$(gaps)" "skills"
+}
+
+@test "a missing skills.lock is a gap, and the other checks still run" {
+  rm "$HOME/kit/skills.lock" CLAUDE.md
+  is "$(gaps)" "claude_md skills"
 }
 
 @test "an installed agent that differs from the lock file is a gap" {

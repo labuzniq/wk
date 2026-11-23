@@ -2,14 +2,18 @@
 # /// script
 # requires-python = ">=3.11"
 # ///
-"""Install the ECC agents named in agents/agents.toml, with skills set in frontmatter only."""
-import hashlib
+"""Install the ECC agents named in agents/agents.toml: recorded patches applied, skills set in frontmatter."""
 import json
 import re
 import subprocess
 import sys
+import tempfile
 import tomllib
 from pathlib import Path
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+import patches
 
 HOME = Path.home()
 CONFIG = tomllib.loads((HOME / ".config/workspace-kit/config.toml").read_text())
@@ -47,14 +51,26 @@ def with_skills(upstream: str, skills: list[str]) -> str:
 
 
 def sha256(text: str) -> str:
-    return hashlib.sha256(text.encode()).hexdigest()
+    return patches.sha256(text.encode())
+
+
+def patched(upstream: str, name: str) -> str:
+    patch = patches.patch_for(KIT, "agents", name)
+    if not patch:
+        return upstream
+    with tempfile.TemporaryDirectory() as folder:
+        agent_file = Path(folder) / f"{name}.md"
+        agent_file.write_text(upstream)
+        patches.apply(patch, Path(folder), f"agents-sync: agent {name}")
+        print(f"agents-sync: patched {name} with {patch.relative_to(KIT)}")
+        return agent_file.read_text()
 
 
 def install_into_project(source: Path, project: Path, names: list[str]) -> None:
     target = project / ".claude/agents"
     target.mkdir(parents=True, exist_ok=True)
     for name in names:
-        (target / f"{name}.md").write_text((source / "agents" / f"{name}.md").read_text())
+        (target / f"{name}.md").write_text(patched((source / "agents" / f"{name}.md").read_text(), name))
         print(f"agents-sync: {name} in {target}")
 
 
@@ -70,13 +86,19 @@ def main() -> None:
     if problems:
         sys.exit("agents-sync: cannot map these skills:\n  " + "\n  ".join(problems))
 
-    TARGET_DIR.mkdir(parents=True, exist_ok=True)
+    # Every patch is applied before any file is written, so a patch that fails leaves the install as it was.
     lock = {"commit": manifest["source"]["commit"], "agents": {}}
+    texts = {}
     for name, spec in agents.items():
         upstream = (source / "agents" / f"{name}.md").read_text()
-        installed = with_skills(upstream, spec["skills"])
-        (TARGET_DIR / f"{name}.md").write_text(installed)
-        lock["agents"][name] = {"upstream_sha256": sha256(upstream), "installed_sha256": sha256(installed)}
+        texts[name] = with_skills(patched(upstream, name), spec["skills"])
+        lock["agents"][name] = {"upstream_sha256": sha256(upstream), "installed_sha256": sha256(texts[name])}
+        patch = patches.patch_for(KIT, "agents", name)
+        if patch:
+            lock["agents"][name]["patch_sha256"] = patches.sha256(patch.read_bytes())
+    TARGET_DIR.mkdir(parents=True, exist_ok=True)
+    for name, text in texts.items():
+        (TARGET_DIR / f"{name}.md").write_text(text)
     (KIT / "agents/agents.lock").write_text(json.dumps(lock, indent=2) + "\n")
     print(f"agents-sync: {len(agents)} agents in {TARGET_DIR}")
 
