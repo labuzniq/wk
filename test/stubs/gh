@@ -2,9 +2,28 @@
 # Stand-in for gh in tests. Logs each call to $GH_STUB/calls. Pull request 7 lives in $GH_STUB/pr.json; no such file means no pull request.
 # `gh pr create` opens it, or fails when $GH_STUB/fail-create exists. The repo owner and the signed-in user are "someone",
 # unless $GH_STUB/owner or $GH_STUB/me say otherwise.
+# The pull requests of `wk pins-update` (`pr list --state all`, `pr create --base`, `pr merge`) live in $GH_STUB/prs.json;
+# a file $GH_STUB/merge-refused makes the merge fail.
 set -euo pipefail
 printf '%s\n' "$*" >> "$GH_STUB/calls"
 url=https://github.com/someone/legacy/pull/7
+
+case "$1 ${2:-} ${3:-}" in
+  "pr list --state")
+    [ "${*:3}" = "--state all --limit 1000 --json url,state,headRefName" ] || { echo "gh stand-in: unexpected call '$*'; teach test/stubs/gh the new form" >&2; exit 64; }
+    cat "$GH_STUB/prs.json"
+    exit
+    ;;
+  "pr create --base")
+    [ "$3 $5 $7 $9 $#" = "--base --head --title --body-file 10" ] || { echo "gh stand-in: unexpected call '$*'; teach test/stubs/gh the new form" >&2; exit 64; }
+    cp "${10}" "$GH_STUB/pr-body.md"
+    url="https://github.com/test/kit/pull/$(($(jq length "$GH_STUB/prs.json") + 1))"
+    jq -c --arg url "$url" --arg head "$6" '. + [{url: $url, state: "OPEN", headRefName: $head}]' "$GH_STUB/prs.json" > "$GH_STUB/prs.json.new"
+    mv "$GH_STUB/prs.json.new" "$GH_STUB/prs.json"
+    echo "$url"
+    exit
+    ;;
+esac
 
 case "$1 ${2:-}" in
   "pr view")
@@ -24,5 +43,11 @@ case "$1 ${2:-}" in
     ;;
   "repo view") cat "$GH_STUB/owner" 2>/dev/null || echo someone ;;
   "api user") cat "$GH_STUB/me" 2>/dev/null || echo someone ;;
+  "pr merge")
+    [ "${*:4}" = "--squash --delete-branch" ] || { echo "gh stand-in: unexpected call '$*'; teach test/stubs/gh the new form" >&2; exit 64; }
+    [ ! -f "$GH_STUB/merge-refused" ] || { echo "the base branch policy prohibits the merge" >&2; exit 1; }
+    jq -c --arg url "$3" 'map(if .url == $url then .state = "MERGED" else . end)' "$GH_STUB/prs.json" > "$GH_STUB/prs.json.new"
+    mv "$GH_STUB/prs.json.new" "$GH_STUB/prs.json"
+    ;;
   *) echo "gh stand-in: no answer for '$*'; add it to test/stubs/gh" >&2; exit 64 ;;
 esac

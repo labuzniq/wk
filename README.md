@@ -26,7 +26,7 @@ git clone https://github.com/labuzniq/wk ~/.workspace-kit
 
 The argument is the folder your projects live in. The installer can be run again at any time; a second run changes nothing.
 
-**It changes your Claude Code setup.** It replaces `~/.claude/CLAUDE.md` with a link to [`claude/CLAUDE.md`](claude/CLAUDE.md), merges hooks and permission rules into `~/.claude/settings.json`, installs the skills in [`skills.txt`](skills.txt) at their pinned commits and the agents in [`agents/agents.toml`](agents/agents.toml). Both files are backed up to `~/.claude/backup/<timestamp>/` first. Read `claude/CLAUDE.md` and make it yours before installing.
+**It changes your Claude Code setup.** It replaces `~/.claude/CLAUDE.md` with a link to [`claude/CLAUDE.md`](claude/CLAUDE.md), merges hooks and permission rules into `~/.claude/settings.json`, installs the skills in [`skills.txt`](skills.txt) at their pinned commits and the agents in [`agents/agents.toml`](agents/agents.toml), and creates the Orca automation "Pin update" (see "Good to know"). Both files are backed up to `~/.claude/backup/<timestamp>/` first. Read `claude/CLAUDE.md` and make it yours before installing.
 
 Then do the three manual Orca settings in [`docs/orca-settings.md`](docs/orca-settings.md).
 
@@ -41,6 +41,7 @@ Then do the three manual Orca settings in [`docs/orca-settings.md`](docs/orca-se
 | `wk board-sync [--repo]` | Move Orca cards forward from git and pull request state |
 | `wk agents-sync` | Install the pinned ECC agents, with their recorded patches |
 | `wk skills-sync` | Install the pinned third-party skills, with their recorded patches |
+| `wk pins-update [--dry-run]` | Offer newer upstream versions of the pinned skills and agents as a pull request |
 | `wk transcript <file>` | Print what was said in a Claude Code transcript |
 
 ## Checking the kit
@@ -85,6 +86,7 @@ knowledge-base/       the vault: raw/ sources and wiki/ pages
 - The wiki automation commits changes under `knowledge-base/` onto the branch the primary checkout is on, and does not push.
 - Third-party skills and agents are installed from their own repos, each pinned to one commit: skills in `skills.txt` (`owner/repo#<commit>`), agents in `agents/agents.toml`. This repo holds none of their text.
 - When a skill or an agent does not fit this setup, it carries a recorded patch: `patches/skills/<name>.patch` or `patches/agents/<name>.patch`, a unified diff with `a/` and `b/` path prefixes (for a skill, paths inside its folder; for an agent, `<name>.md`). `wk skills-sync` and `wk agents-sync` apply it after install. `skills.lock` and `agents/agents.lock` record the checksum before and after, and `wk doctor` reports an install that differs. A patch that no longer applies stops the sync and names the skill or agent. A skill you edited by hand is moved to `~/.claude/backup/` before the pinned one replaces it.
+- Pins move by a weekly Orca automation, "Pin update", which the installer creates (Monday 08:00). It runs `wk pins-update`: when an upstream repo has a newer commit, the run opens a pull request with the new pins and lock files, and the pull request shows what changed upstream. The run merges it itself when three conditions hold, all checked by code: `wk skills-sync` and `wk agents-sync` succeed (so every patch still applies), `wk doctor` reports no gap for the new install, and the upstream text of the pinned skills and agents changed by fewer than 50 lines (added plus removed). Otherwise the pull request waits for you, and no second one is opened while it waits. A closed pull request is a "no" for those versions. The run works in a throwaway clone and throwaway home folders, so nothing on your Mac changes until you `git pull` the kit; after that `wk doctor` reports the older install and the two sync commands bring in the new versions. `wk pins-update --dry-run` prints the pull request text and pushes nothing. To undo a merge: `gh pr revert <url>`. To stop the runs: `orca automations remove <id>`.
 
 ## License
 
