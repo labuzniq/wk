@@ -1,7 +1,7 @@
 # Vision gap
 
 The work that takes `wk` from what it does today to what the Vision section of `STRATEGY.md` says (that file arrives with the vision pull request).
-One section per ticket. Each ticket is one Orca card with the same name.
+One section per ticket. Each ticket is one issue in the tracker; its body links to its section here.
 
 Order: `kit-test-harness` and `proof-first-review` can start at once. Every other ticket waits for `kit-test-harness`, because the vision says an automation is built only on top of a step that already works without hand correction, and the kit holds its own scripts to that first.
 
@@ -87,31 +87,19 @@ Order: `kit-test-harness` and `proof-first-review` can start at once. Every othe
 
 **Blocked by:** `kit-test-harness`
 
-## cards-to-issues
+## workspace-follows-issue
 
-**What to build:** Each Orca card of a project has one GitHub issue that mirrors its name, status and comment, so tasks can be read away from the Mac, by colleagues too, and survive a lost laptop. The board stays the source of truth.
+**What to build:** A workspace and its issue stay in step without the owner doing anything. A merged pull request closes the issue. When someone closes the issue or comments on it, the workspace card completes or gets the comment.
 
 **Acceptance criteria**
 
-- A new card gets an issue; a changed card updates its issue; a completed card closes it.
-- The mirror is off for a repo without a GitHub remote and can be turned off per project.
-- No network call is added to a hook that runs in every session.
-- A failed GitHub call never blocks or changes the board.
+- A pull request opened by the agent names its issue, so the merge closes it.
+- Closing an issue completes its workspace card on the next sync.
+- A comment on an issue appears on the workspace card once, with its author.
+- A completed card is never moved back by an issue being reopened.
+- No network call is added to a hook that runs in every session, and a failed tracker call never blocks or changes the board.
 
 **Blocked by:** `kit-test-harness`
-
-## issues-to-cards
-
-**What to build:** When someone closes a mirrored issue or comments on it, the change reaches the card: the card completes, or the comment is added to the card.
-
-**Acceptance criteria**
-
-- Closing a mirrored issue completes its card on the next sync.
-- A comment on a mirrored issue appears on the card once, with its author.
-- A completed card is never moved back by an issue being reopened.
-- When card and issue changed at the same time, the card wins and the issue is brought back in line.
-
-**Blocked by:** `kit-test-harness`, `cards-to-issues`
 
 ## shared-vault
 

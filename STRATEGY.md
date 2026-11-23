@@ -33,10 +33,11 @@ The kit holds itself to this: its own scripts get tests, shell lint and a `wk do
 
 ### Orca owns worktrees and tasks
 
-Every worktree is created through Orca, and every task is one Orca card.
+Every worktree is created through Orca.
+Every task is one issue in the project's tracker, and work on it happens in one Orca workspace, created when the work starts and linked to the issue.
 There is no fallback and no mode without Orca: when Orca is not running, creating a worktree fails on purpose.
-The board is the source of truth for tasks; task state stays out of files, docs and the wiki.
-GitHub issues mirror the cards, for reading away from the Mac, as a backup and for colleagues; a close or a comment on an issue is brought back to its card.
+The tracker is the source of truth for tickets, and the board for work in progress; task state stays out of docs and the wiki.
+A workspace follows its issue: a merged pull request closes the issue, and a close or a comment on the issue reaches the workspace card.
 Card status follows facts - commits and pull request state - and a completed card is never moved back.
 A worktree is removed without asking only when its branch is merged and its card has been completed for 14 days; the branch and the card stay.
 
@@ -61,7 +62,7 @@ Hooks that run in every session stay fast: no network calls and no waiting on Or
 
 ### One home per kind of knowledge
 
-Tasks live on the board, decisions in `docs/adr/`, specs in `docs/specs/`, and what was learned in a vault.
+Tickets live in the tracker, work in progress on the board, decisions in `docs/adr/`, specs in `docs/specs/`, and what was learned in a vault.
 Each project has its own vault, inside its own repo, for what is true of that project.
 Lessons that hold across projects - about Orca, the agents and the kit itself - live in one shared vault outside any repo.
 Sorting lessons between the two and keeping both in order runs as Orca automations driven by the agent, never as a chore for the owner.
@@ -76,4 +77,4 @@ What differs between people is a flag or a personal file outside the repo; what 
 Private material stays out of this repo: the build spec, project names and vault contents live elsewhere.
 
 A change aligns when it removes something the owner had to type or remember, turns a repeated correction into a check, can be seen and undone, keeps third-party text out of this repo and existing files untouched, and rests on a checked fact.
-A change should be resisted when it adds a task list the board does not know about, a second home for a kind of knowledge, a way around Orca, a fork or copy of someone else's skill, a slow or networked step in a hook, a prose rule where a check would do, automation on top of a step that still needs hand correction, or a silent change that cannot be undone.
+A change should be resisted when it adds a task list outside the tracker and the board, a workspace for a ticket nobody is working on, a second home for a kind of knowledge, a way around Orca, a fork or copy of someone else's skill, a slow or networked step in a hook, a prose rule where a check would do, automation on top of a step that still needs hand correction, or a silent change that cannot be undone.
