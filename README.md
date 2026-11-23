@@ -28,7 +28,7 @@ The argument is the folder your projects live in. The installer can be run again
 
 **It changes your Claude Code setup.** It adds one line to `~/.claude/CLAUDE.md` that imports the shared instructions in [`claude/CLAUDE.md`](claude/CLAUDE.md), merges hooks and permission rules into `~/.claude/settings.json`, installs the skills in [`skills.txt`](skills.txt) at their pinned commits and the agents in [`agents/agents.toml`](agents/agents.toml). Both files are backed up to `~/.claude/backup/<timestamp>/` before they change.
 
-`~/.claude/CLAUDE.md` stays yours: the installer keeps your text and never replaces the file, so your own rules (language, tone, habits) go there, below the import line. The shared rules (Orca, Git, the review gate) stay in the kit and reach everyone with `git pull`. An install from before this split (a link to `claude/CLAUDE.md`) moves to the new layout on the next installer run.
+`~/.claude/CLAUDE.md` stays yours: the installer keeps your text and never replaces the file, so your own rules (language, tone, habits) go there, below the import line. The shared rules (Orca, Git, the review gate) stay in the kit and reach everyone with `git pull`. An install from before this split (a link to `claude/CLAUDE.md`) moves to the new layout on the next installer run. Run the installer right after the `git pull` that brings the split: until then the lines that became personal (the Language section) are not loaded, and `wk doctor` reports an `instructions` gap.
 
 Then do the three manual Orca settings in [`docs/orca-settings.md`](docs/orca-settings.md).
 

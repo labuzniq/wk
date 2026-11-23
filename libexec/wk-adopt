@@ -124,11 +124,16 @@ def remember_repo(primary: Path, repo_id: str) -> None:
     print(f"saved   the Orca repo id for this Mac in {record}")
 
 
-def drop_personal_values(root: Path) -> None:
+def drop_personal_values(root: Path, primary: Path) -> None:
     """A capsule written before the split holds the Orca repo id of the person who adopted the repo."""
     manifest_file = root / ".workspace-kit.toml"
     text = manifest_file.read_text()
     shared = re.sub(r"^orca_repo_id *=.*\n", "", text, flags=re.MULTILINE)
+    if root != primary:
+        # A worktree holds a ticket's branch; the clean-up of the capsule is not that ticket's change.
+        if shared != text:
+            print("kept    orca_repo_id in this worktree's .workspace-kit.toml; `wk adopt` in the primary checkout removes it")
+        return
     if shared != text:
         manifest_file.write_text(shared)
         print("removed orca_repo_id from .workspace-kit.toml: it is true for one person only and now lives outside the repo; commit the change")
@@ -147,7 +152,9 @@ def orca_repo_id(root: Path) -> str:
     for repo in repos:
         if repo["path"] == str(root):
             return repo["id"]
-    return json.loads(run("orca", "repo", "add", "--path", str(root), "--json"))["result"]["repo"]["id"]
+    repo_id = json.loads(run("orca", "repo", "add", "--path", str(root), "--json"))["result"]["repo"]["id"]
+    print(f"added   {root} to Orca")
+    return repo_id
 
 
 STATE = Path.home() / ".local/state/workspace-kit"
@@ -242,6 +249,7 @@ def main() -> None:
     if "origin" in run("git", "-C", str(primary), "remote").split():
         base = f"origin/{base}"
     run("orca", "repo", "set-base-ref", "--repo", f"id:{repo_id}", "--ref", base, "--json")
+    print(f"set     the Orca base ref to {base}")
 
     remember_repo(primary, repo_id)
     write_new(manifest_file, manifest(slug, args.type, stacks))
@@ -254,7 +262,7 @@ def main() -> None:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(template, target)
             print(f"created {target.relative_to(root)}")
-    drop_personal_values(root)
+    drop_personal_values(root, primary)
     create_vault(root / "knowledge-base", slug)
     ignore(root)
     vault = primary / "knowledge-base"

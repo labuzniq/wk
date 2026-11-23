@@ -17,6 +17,7 @@ gap() { skipped "$1" || echo "$1: $2"; }
 [ -f "$root/CLAUDE.md" ] || gap claude_md "no project CLAUDE.md; run \`wk adopt\`, then fill in purpose, commands and gotchas from the repo"
 grep -qs '^\[tasks\.setup\]' "$root/mise.toml" || gap mise "mise.toml has no setup task"
 [ -s "$state_dir/repos/$(path_key "$primary")" ] || gap orca_repo "this repo is not set up in your Orca on this Mac; run \`wk adopt\` (it keeps every existing file) and commit what it changed"
+[ "$root" != "$primary" ] || ! grep -q '^orca_repo_id' "$manifest" || gap shared_values ".workspace-kit.toml holds orca_repo_id, which is true for one person only; run \`wk adopt\` (it removes the line and keeps the id outside the repo) and commit the change"
 [ -f "$root/orca.yaml" ] && [ -f "$root/.worktreeinclude" ] || gap orca_files "orca.yaml or .worktreeinclude is missing; run \`wk adopt\`"
 grep -qs '^  setup:' "$root/orca.yaml" || gap orca_setup_hook "orca.yaml has no scripts.setup; add \`mise trust -y && mise run setup\`"
 

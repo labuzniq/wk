@@ -76,6 +76,18 @@ changes() { grep -E '^(wrote|moved|added|merged|linked|backed up) ' <<<"$output"
   [[ "$output" == *"your text is kept"* ]]
 }
 
+@test "instructions that are a link into the person's own files stay a link, and the backup holds the old text" {
+  mkdir -p "$HOME/.claude" "$HOME/dotfiles"
+  echo "- my own rule" > "$HOME/dotfiles/claude.md"
+  ln -s ../dotfiles/claude.md "$mine"
+  install
+  [ "$status" -eq 0 ]
+  is "$(readlink "$mine")" ../dotfiles/claude.md
+  is "$(cat "$HOME/dotfiles/claude.md")" "$import"$'\n\n- my own rule'
+  [ ! -L "$(echo "$HOME"/.claude/backup/*/CLAUDE.md)" ]
+  is "$(cat "$HOME"/.claude/backup/*/CLAUDE.md)" "- my own rule"
+}
+
 @test "the doctor reports an install of the old layout, and the installer fixes it" {
   install
   adopted_project

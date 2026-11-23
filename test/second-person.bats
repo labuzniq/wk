@@ -21,6 +21,7 @@ second_person() {
 session_start() { jq -n --arg cwd "$PWD" '{cwd: $cwd}' | "$kit/hooks/session-start.sh"; }
 
 @test "nothing the capsule commits holds a value of one person" {
+  is "$(git grep -c '^slug = "demo"$')" ".workspace-kit.toml:1"
   run git grep -n -e repo-1 -e "$HOME" -e orca_repo_id
   is "$output" ""
 }
@@ -59,13 +60,13 @@ old_capsule() {
 
 @test "a capsule from before the split keeps working, and wk adopt takes the one-person value out" {
   old_capsule
-  is "$("$kit/bin/wk" doctor | grep -v '^vision:')" ""
-  run session_start
-  [[ "$output" != *"Capsule gaps"* ]]
+  is "$("$kit/bin/wk" doctor | grep -v '^vision:' | cut -d: -f1)" "shared_values"
+  git worktree add -q "$HOME/projects/ticket" -b ticket
+  is "$(cd "$HOME/projects/ticket" && "$kit/bin/wk" doctor | grep -v '^vision:')" ""
 
   second_person
   run "$kit/bin/wk" doctor
-  [[ "$output" == orca_repo:* ]]
+  is "$(grep -v '^vision:' <<<"$output" | cut -d: -f1 | paste -sd' ' -)" "orca_repo shared_values"
   run "$kit/libexec/wk-adopt"
   [ "$status" -eq 0 ]
   [[ "$output" == *"removed orca_repo_id from .workspace-kit.toml"* ]]
@@ -74,4 +75,24 @@ old_capsule() {
   is "$(git diff -U0 | grep -c '^[-+][^-+]')" 5
   is "$(grep -rl -e orca_repo_id -e repoId .workspace-kit.toml docs)" ""
   is "$("$kit/bin/wk" doctor | grep -v '^vision:')" ""
+}
+
+@test "in a worktree wk adopt sets up the person and leaves the old capsule to the primary checkout" {
+  old_capsule
+  rm -r "$state"
+  git worktree add -q "$HOME/projects/ticket" -b ticket
+  cd "$HOME/projects/ticket" || return 1
+  is "$("$kit/bin/wk" doctor | grep -v '^vision:' | cut -d: -f1)" "orca_repo"
+  run "$kit/libexec/wk-adopt"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"kept    orca_repo_id in this worktree's .workspace-kit.toml"* ]]
+  is "$(git status --porcelain)" ""
+  is "$("$kit/bin/wk" doctor | grep -v '^vision:')" ""
+}
+
+@test "wk adopt prints what it changes in Orca" {
+  second_person
+  run "$kit/libexec/wk-adopt"
+  [[ "$output" == *"added   $PWD to Orca"* ]]
+  [[ "$output" == *"set     the Orca base ref to origin/main"* ]]
 }

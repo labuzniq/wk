@@ -48,7 +48,10 @@ elif [ ! -e "$personal" ]; then
   printf '%s\n\n# My instructions\n\n%s\n' "$import" "$note" > "$personal"
   echo "wrote $personal: it imports $shared; add your own rules to it"
 elif ! grep -qxF "$import" "$personal"; then
-  backup "$personal"
+  # A copy of the text, not of a link: the file behind a link is about to change.
+  mkdir -p "$backup_dir"
+  cp -L "$personal" "$backup_dir/"
+  echo "backed up $personal to $backup_dir"
   text=$(cat "$personal")
   # Written in place, so a file that is a link into the person's own dotfiles stays a link.
   printf '%s\n\n%s\n' "$import" "$text" > "$personal"
