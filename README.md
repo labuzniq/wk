@@ -56,7 +56,7 @@ One command runs shell lint (`shellcheck`), Python lint (`ruff`) and the tests (
 ```
 install.sh       links everything into place
 claude/          global CLAUDE.md, settings fragment, merge rules
-hooks/           session-start, stop, session queue, worktree create and remove
+hooks/           session-start, stop, session queue, worktree create and remove, rule checks before Bash calls and file writes
 bin/wk           the CLI; commands live in libexec/
 agents/          which ECC agents, the pinned commit, the lock file
 skills.txt       which third-party skills and their pinned commits; skills.lock is the lock file
@@ -64,7 +64,7 @@ patches/         recorded patches for third-party skills and agents
 skills/          project-setup, wiki-ingest, wiki-lint
 templates/       project capsule, vault skeleton, Orca workspace rules for the tracker doc
 test/            `test/run`, the tests, and stand-ins for orca and gh
-docs/            verified facts and the manual Orca checklist
+docs/            verified facts, the manual Orca checklist, and which rule is a check (rules.md)
 ```
 
 ## What a project gets

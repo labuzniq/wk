@@ -154,3 +154,19 @@ This replaces "in an existing repo with history it asks once" from the change of
 - Before the merge, Orca already knows the repo (`orca repo add`, `orca repo set-base-ref`): a worktree cannot be created without it.
 - confirmed with stand-ins for `orca` and `gh`. The Orca and gh calls it makes (`orca worktree create --repo --name --no-parent --setup skip --comment --json`, `orca worktree set --pr --workspace-status`, `gh pr create`, `gh pr view --json state`, `gh pr list --head`, `gh repo view --json owner`, `gh api user`) were each used by hand on this Mac the same day or are read in `--help`.
 - open: one whole run of `wk adopt-pr` against a real repo on GitHub.
+
+## Rules into hooks (2026-11-23)
+
+Claude Code 2.1.311. The list of rules, and which hook checks which, is in `docs/rules.md`.
+
+- confirmed: a `PreToolUse` hook gets JSON on stdin with `session_id`, `transcript_path`, `cwd`, `permission_mode`, `hook_event_name`, `tool_name`, `tool_input` and `tool_use_id`. For `Bash`, `tool_input` holds `command` and `description`; for `Write`, `file_path` (a full path) and `content`. Read from a real session with a hook that saved its input.
+- confirmed: a hook that exits with code 2 stops the tool call, and the agent gets the hook's stderr as `PreToolUse:<tool> hook error: [<hook path>]: <stderr>`. Tested in a real session in a throwaway repo: `git commit -m "wip"` and a `Write` under the vault's `wiki/` did not run, and the agent quoted the message word for word; `git commit -m "chore: second"` ran.
+- confirmed: the block holds in `bypassPermissions` mode, and against a `permissions.allow` rule that matches the command (`Bash(git *)`, with `git push --force origin main`).
+- confirmed: the matcher `Bash` and the matcher `Write|Edit|MultiEdit|NotebookEdit` ran the hooks for `Bash` and `Write` calls.
+- docs: `tool_input` of `Edit` holds `file_path`. The docs do not list the fields of `MultiEdit` and `NotebookEdit`; the hook reads `file_path`, then `notebook_path`. A `NotebookEdit` call with another field name passes with the "not checked" line.
+- docs: any other exit code than 0 and 2 does not block: the tool call goes on and the transcript shows a hook error. The hooks use exit 1 with one line on stderr for input they cannot read. Not tried in a real session.
+- docs: hooks from the settings files also run inside subagents. Not tried in a real session.
+- docs: the hook input has no field that names the skill in use. This is why the wiki check reads the `no-capture` mark the wiki skills set in their first step, and why "load the `orca-cli` skill first" stays a judgment rule.
+- open: `${CLAUDE_SESSION_ID}` in a skill is the same value as `session_id` in the hook input. The session queue hook already rests on this; the wiki check now does too. If it were not, a wiki skill's own writes would be blocked with the wiki message.
+- confirmed: time for one call on this Mac, average of 10: a Bash call without the word `git` 13 ms; a git command 28 ms; a forced push without a branch (one local `git branch --show-current`) 44 ms; a file write outside `wiki/` 24 ms; a file write under a `wiki/` folder 135 ms.
+- confirmed: `jq` 1.7.1 (the one macOS ships) runs `hooks/check-command.jq`: named groups, back references and lazy matching work in its regular expressions.

@@ -17,7 +17,6 @@
 
 ## Orca owns worktrees and tasks
 - Load the `orca-cli` skill before any worktree, terminal, browser or board operation.
-- Create every worktree through Orca. Never run `git worktree add`; never use `.claude/worktrees`.
 - A ticket is an issue in the project's tracker (`docs/agents/issue-tracker.md`). A workspace is where one ticket is worked on: create it when work on the ticket starts, linked to its issue, never to hold a ticket for later.
 - The tracker and the Workspace Board are the only task lists; TODO lists stay out of files, docs and the vault.
 - Keep the card status true:
@@ -34,9 +33,8 @@
 ## Git
 - Default: a branch in an Orca worktree, then a pull request.
 - When I say "on main" or "directly", commit to main without a PR.
-- Write commit messages as conventional commits (`feat`, `fix`, `chore`…).
 - Do every GitHub operation with the `gh` CLI (Command Line Interface) and every GitLab operation with the `glab` CLI.
-- Never force-push main. Ask before discarding uncommitted work.
+- Ask before discarding uncommitted work.
 
 ## Review gate
 Before opening a PR, do step 1, then step 2. When I ask for a review and no PR is being opened, do only step 2.
@@ -75,5 +73,5 @@ Specialists by what changed:
 
 ## Knowledge base
 - Each project has its own vault; the session-start context names its path. Before non-trivial work, read the vault's `wiki/index.md` and `wiki/overview.md`.
-- `wiki/` is written only by the `wiki-ingest` and `wiki-lint` skills. When I say "note this" or "remember this", append a dated note to the vault's `raw/inbox/`.
+- When I say "note this" or "remember this", append a dated note to the vault's `raw/inbox/`.
 - Session capture is automatic. End sessions without a closing command.
