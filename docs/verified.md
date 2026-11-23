@@ -124,7 +124,7 @@ The first real use of `to-tickets` created 16 empty workspaces and no issue. Orc
 ## Kit test harness (2026-11-23)
 
 - confirmed: `test/run` runs shell lint, Python lint and the tests on this Mac. The tests cover the board status rules, the doctor's gap lines, the session queue hook, and `wk adopt` plus `wk doctor` on a scratch project.
-- open: the CI (Continuous Integration) run on GitHub; no pull request has carried the workflow yet.
+- confirmed: the CI (Continuous Integration) run on GitHub passed on pull request #20, in about 1 minute on a macOS runner.
 - The tests use stand-ins for `orca` and `gh` (`test/stubs/`), so "Orca answers this way" is assumed from the checks above, not tested again.
 - Found by the tests: on a machine without `~/.agents/skills`, the doctor reported `skills_visible: * is not visible to Claude Code`. Fixed.
 - Stock macOS has bash 3.2, which has no `mapfile`; the kit's scripts stay within bash 3.2.
