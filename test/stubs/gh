@@ -1,12 +1,22 @@
 #!/usr/bin/env bash
-# Stand-in for gh in tests. Logs each call to $GH_STUB/calls. `gh pr view` answers from $GH_STUB/pr.json; no such file means no pull request.
+# Stand-in for gh in tests. Logs each call to $GH_STUB/calls. `gh pr view` answers from $GH_STUB/pr.json and `gh issue view` from $GH_STUB/issue.json; no such file means no pull request or issue. `gh pr edit` saves the new body to $GH_STUB/pr-body. A file $GH_STUB/down makes every call fail, like a lost network.
 set -euo pipefail
-printf '%s\n' "$*" >> "$GH_STUB/calls"
+printf '%s\n' "$1 ${2:-} ${3:-} ${4:-} ${5:-}" >> "$GH_STUB/calls"
+[ ! -f "$GH_STUB/down" ] || { echo "gh stand-in: error connecting to api.github.com" >&2; exit 1; }
+unexpected() { echo "gh stand-in: unexpected call '$*'; teach test/stubs/gh the new form" >&2; exit 64; }
 
 case "$1 ${2:-}" in
   "pr view")
-    [ "${4:-} ${5:-} ${6:-}" = "--json state,reviewDecision --jq" ] || { echo "gh stand-in: unexpected call '$*'; teach test/stubs/gh the new form" >&2; exit 64; }
-    jq -r "$7" "$GH_STUB/pr.json"
+    [ "$#" = 5 ] && [ "$4 $5" = "--json state,reviewDecision,body,closingIssuesReferences" ] || unexpected "$@"
+    cat "$GH_STUB/pr.json"
+    ;;
+  "pr edit")
+    [ "$#" = 5 ] && [ "$4" = "--body" ] || unexpected "$@"
+    printf '%s\n' "$5" > "$GH_STUB/pr-body"
+    ;;
+  "issue view")
+    [ "$#" = 5 ] && [ "$4 $5" = "--json state,comments" ] || unexpected "$@"
+    cat "$GH_STUB/issue.json"
     ;;
   *) echo "gh stand-in: no answer for '$*'; add it to test/stubs/gh" >&2; exit 64 ;;
 esac

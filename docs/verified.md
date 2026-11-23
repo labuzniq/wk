@@ -142,3 +142,16 @@ The first real use of `to-tickets` created 16 empty workspaces and no issue. Orc
 - A skill that differs from what the lock file can bring back is moved to `~/.claude/backup/<timestamp>-skills/` before it is installed again.
 - No patch ships yet: check V11 found no skill or agent that needs one. The tests apply a patch to a stand-in skill and a stand-in agent.
 - `wk skills-sync` and `wk agents-sync` are tested with stand-ins for `npx` and for the upstream repo, not against the network.
+
+## A workspace follows its issue (2026-11-23)
+
+- confirmed: a card with a linked GitHub issue has `linkedIssue: <number>` and `createdAt` (milliseconds since 1970) in `orca worktree current --json`, `orca worktree list --json` and `orca worktree show --json`. A card without one has `linkedIssue: null`. Read on this Mac from the cards of this repo.
+- confirmed: `gh pr view <branch> --json state,reviewDecision,body,closingIssuesReferences` lists the issues the merge will close as `closingIssuesReferences[].number`. Read from pull request #22 of this repo, whose body says `Closes #7`.
+- confirmed: `gh issue view <number> --json state,comments` gives `state` (`OPEN` or `CLOSED`) and, per comment, `id`, `author.login`, `body` and `createdAt` (such as `2026-03-02T21:43:46Z`). Read from a public repo.
+- docs: `gh pr edit <branch> --body <text>` replaces the body (`gh pr edit --help`). `orca worktree set --comment <text>` replaces the whole card comment (`orca worktree set --help`); there is no flag that adds a line.
+- open: GitHub documents that a closing word such as `Closes #7` closes the issue only when the pull request goes into the default branch. Not tested here. For a pull request into another branch the line is added once and the issue stays open after the merge.
+- open: `wk board-sync` was tested with stand-ins for `gh` and `orca`. No real pull request body was edited and no real card comment was written by it, because the rules of this ticket's work allowed one pull request and no issue comment.
+- `wk board-sync` asks GitHub for the issue at most once per 10 minutes per worktree, next to the one question about the pull request. It runs in the background after each agent turn; the hooks themselves make no network call.
+- Only a GitHub issue is followed. A card with a GitLab issue (`linkedGitLabIssue`) or with local ticket files has no `linkedIssue`, so nothing is asked.
+- Between reading the card comment and writing it back with the new line (well under a second), a comment written by the agent would be lost. The card comment is read again right before the write to keep this window small.
+- A comment written before the workspace was created is not put on the card: the agent reads the issue when it starts work.

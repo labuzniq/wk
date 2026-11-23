@@ -21,7 +21,9 @@ card() {
 commit() { git -C "$repo" commit -q --allow-empty -m "feat: work"; }
 pushed() { git -C "$repo" update-ref refs/remotes/origin/task HEAD; }
 # pull_request <state> [review decision]: what GitHub knows about the branch's pull request.
-pull_request() { jq -n --arg state "$1" --arg review "${2:-}" '{state: $state, reviewDecision: $review}' > "$GH_STUB/pr.json"; }
+pull_request() {
+  jq -n --arg state "$1" --arg review "${2:-}" '{state: $state, reviewDecision: $review, body: "", closingIssuesReferences: []}' > "$GH_STUB/pr.json"
+}
 
 # moved_to <status> [card id]
 moved_to() { grep -qx -- "worktree set --worktree id:${2:-card-1} --workspace-status $1 --json" "$ORCA_STUB/calls"; }
@@ -145,7 +147,7 @@ not_moved() {
   pull_request OPEN
   "$kit/bin/wk" board-sync
   "$kit/bin/wk" board-sync
-  is "$(cut -d' ' -f1-5 "$GH_STUB/calls")" "pr view task --json state,reviewDecision"
+  is "$(cat "$GH_STUB/calls")" "pr view task --json state,reviewDecision,body,closingIssuesReferences"
 }
 
 @test "gh is asked again after ten minutes" {

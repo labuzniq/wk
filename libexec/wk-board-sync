@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Moves Orca cards forward from git and pull request state. Never moves a card back from completed.
+# Moves Orca cards forward from git, pull request and issue state, and brings new issue comments to the card. Never moves a card back from completed.
 set -euo pipefail
 command -v orca >/dev/null && orca status --json >/dev/null 2>&1 || exit 0
 
@@ -7,15 +7,55 @@ gh_interval_seconds=600
 state_dir="$HOME/.local/state/workspace-kit/gh"
 mkdir -p "$state_dir"
 
-pr_state() {
+fresh() { [ -f "$1" ] && [ $(( $(date +%s) - $(stat -f %m "$1") )) -lt "$gh_interval_seconds" ]; }
+
+# pr_json <path> <branch>: prints what GitHub knows about the branch's pull request; nothing when there is none, when gh fails or when it was asked less than 10 minutes ago.
+pr_json() {
   local path="$1" branch="$2" stamp
   git -C "$path" rev-parse -q --verify "refs/remotes/origin/$branch" >/dev/null || return 0
   stamp="$state_dir/$(printf '%s' "$path" | shasum | cut -d' ' -f1)"
-  if [ -f "$stamp" ] && [ $(( $(date +%s) - $(stat -f %m "$stamp") )) -lt "$gh_interval_seconds" ]; then
-    return 0
-  fi
+  ! fresh "$stamp" || return 0
   touch "$stamp"
-  (cd "$path" && gh pr view "$branch" --json state,reviewDecision --jq '.state + " " + .reviewDecision' 2>/dev/null) || true
+  (cd "$path" && gh pr view "$branch" --json state,reviewDecision,body,closingIssuesReferences 2>/dev/null) || true
+}
+
+# name_issue <path> <branch> <issue> <pull request JSON>: an open pull request that does not name the card's issue gets "Closes #<issue>" added to its body, so the merge closes the issue.
+name_issue() {
+  local path="$1" branch="$2" issue="$3" pr="$4" body
+  body=$(jq -r --argjson issue "$issue" '
+    select(.state == "OPEN")
+    | select(any(.closingIssuesReferences[]?; .number == $issue) | not)
+    | select((.body // "") | test("(close[sd]?|fix(e[sd])?|resolve[sd]?):?\\s+#\($issue)\\b"; "i") | not)
+    | [((.body // "") | sub("\\s+$"; "") | select(. != "")), "Closes #\($issue)"] | join("\n\n")' <<<"$pr" 2>/dev/null) || return 0
+  [ -n "$body" ] || return 0
+  (cd "$path" && gh pr edit "$branch" --body "$body" >/dev/null 2>&1) || return 0
+  echo "$branch: added 'Closes #$issue' to the pull request, so the merge closes the issue"
+}
+
+# follow_issue <card id> <path> <issue> <card created, ms>: sets issue_state, and adds each issue comment written after the card was created to the card comment, once.
+# The stamp file holds the ids of the comments already added.
+follow_issue() {
+  local id="$1" path="$2" issue="$3" created="$4" stamp json new comment
+  issue_state=""
+  [ "$issue" != 0 ] || return 0
+  stamp="$state_dir/$(printf '%s' "$path" | shasum | cut -d' ' -f1).issue"
+  ! fresh "$stamp" || return 0
+  touch "$stamp"
+  json=$(cd "$path" && gh issue view "$issue" --json state,comments 2>/dev/null) || return 0
+  new=$(jq -r --rawfile added "$stamp" --argjson created "$created" '
+    ($added | split("\n")) as $added
+    | .comments[]
+    | select(.id as $id | $added | index($id) | not)
+    | select((.createdAt | fromdateiso8601) * 1000 > $created)
+    | "\(.id)\tissue comment by \(.author.login): \(.body | gsub("\\s+"; " ") | .[0:200])"' <<<"$json" 2>/dev/null) || return 0
+  issue_state=$(jq -r '.state' <<<"$json")
+  [ -n "$new" ] || return 0
+  comment=$(orca worktree show --worktree "id:$id" --json 2>/dev/null | jq -r '.result.worktree.comment // ""') || return 0
+  comment="${comment:+$comment
+}$(cut -f2- <<<"$new")"
+  orca worktree set --worktree "id:$id" --comment "$comment" --json >/dev/null 2>&1 || return 0
+  cut -f1 <<<"$new" >> "$stamp"
+  echo "$(basename "$path"): added $(wc -l <<<"$new" | tr -d ' ') comment(s) from issue #$issue to the card"
 }
 
 merged_into_base() {
@@ -26,10 +66,15 @@ merged_into_base() {
 }
 
 sync_card() {
-  local id="$1" path="$2" branch="${3#refs/heads/}" base="$4" status="$5" pr target=""
+  local id="$1" path="$2" branch="${3#refs/heads/}" base="$4" status="$5" issue="$6" created="$7" pr_json pr="" target=""
   [ "$status" = completed ] && return 0
-  pr=$(pr_state "$path" "$branch")
-  if [[ "$pr" == MERGED* ]] || merged_into_base "$path" "$base"; then
+  pr_json=$(pr_json "$path" "$branch")
+  if [ -n "$pr_json" ]; then
+    pr=$(jq -r '.state + " " + .reviewDecision' <<<"$pr_json" 2>/dev/null) || pr=""
+    [ "$issue" = 0 ] || name_issue "$path" "$branch" "$issue" "$pr_json" || true
+  fi
+  follow_issue "$id" "$path" "$issue" "$created" || true
+  if [[ "$pr" == MERGED* ]] || merged_into_base "$path" "$base" || [ "$issue_state" = CLOSED ]; then
     target=completed
   elif [[ "$pr" == "OPEN CHANGES_REQUESTED" ]]; then
     target=in-progress
@@ -51,6 +96,6 @@ else
   cards=$(jq -c '.result.worktree' <<<"$current")
 fi
 
-while IFS=$'\t' read -r id path branch base status; do
-  sync_card "$id" "$path" "$branch" "$base" "$status"
-done < <(jq -r 'select(.isMainWorktree | not) | select(.baseRef != null) | [.id, .path, .branch, .baseRef, .workspaceStatus] | @tsv' <<<"$cards")
+while IFS=$'\t' read -r id path branch base status issue created; do
+  sync_card "$id" "$path" "$branch" "$base" "$status" "$issue" "$created"
+done < <(jq -r 'select(.isMainWorktree | not) | select(.baseRef != null) | [.id, .path, .branch, .baseRef, .workspaceStatus, (.linkedIssue // 0), (.createdAt // 0)] | @tsv' <<<"$cards")

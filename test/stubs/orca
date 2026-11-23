@@ -1,13 +1,26 @@
 #!/usr/bin/env bash
-# Stand-in for the Orca CLI in tests. Logs each call to $ORCA_STUB/calls and answers from the files in $ORCA_STUB.
+# Stand-in for the Orca CLI in tests. Logs each call to $ORCA_STUB/calls and answers from the files in $ORCA_STUB. `worktree set --comment` stores the comment in current.json and logs only the flag; a file $ORCA_STUB/set-fails makes `worktree set` fail.
 set -euo pipefail
-printf '%s\n' "$*" >> "$ORCA_STUB/calls"
+comment_at=0
+for ((i = 1; i <= $#; i++)); do [ "${!i}" != --comment ] || comment_at=$((i + 1)); done
+if [ "$comment_at" -gt 0 ]; then
+  printf '%s\n' "${*:1:comment_at-1} ${*:comment_at+1}" >> "$ORCA_STUB/calls"
+else
+  printf '%s\n' "$*" >> "$ORCA_STUB/calls"
+fi
 
 case "$1 ${2:-}" in
   "status --json") [ ! -f "$ORCA_STUB/down" ] ;;
-  "worktree current") cat "$ORCA_STUB/current.json" ;;
+  "worktree current" | "worktree show") cat "$ORCA_STUB/current.json" ;;
   "worktree list") cat "$ORCA_STUB/list.json" ;;
-  "worktree set" | "repo set-base-ref") ;;
+  "worktree set")
+    [ ! -f "$ORCA_STUB/set-fails" ] || { echo "orca stand-in: worktree set failed" >&2; exit 1; }
+    if [ "$comment_at" -gt 0 ]; then
+      jq --arg comment "${!comment_at}" '.result.worktree.comment = $comment' "$ORCA_STUB/current.json" > "$ORCA_STUB/current.json.new"
+      mv "$ORCA_STUB/current.json.new" "$ORCA_STUB/current.json"
+    fi
+    ;;
+  "repo set-base-ref") ;;
   "repo list") jq -c '{result: {repos: .}}' "$ORCA_STUB/repos.json" ;;
   "repo add")
     jq -c --arg path "$4" '. + [{id: "repo-\(length + 1)", path: $path}]' "$ORCA_STUB/repos.json" > "$ORCA_STUB/repos.json.new"

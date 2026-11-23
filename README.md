@@ -37,7 +37,7 @@ Then do the three manual Orca settings in [`docs/orca-settings.md`](docs/orca-se
 | `wk new <name>` | Create a project under the projects folder, with the capsule |
 | `wk adopt` | Add the capsule to the repo or folder you are in; keeps existing files |
 | `wk doctor` | Print one line per missing piece of the capsule |
-| `wk board-sync [--repo]` | Move Orca cards forward from git and pull request state |
+| `wk board-sync [--repo]` | Move Orca cards forward from git, pull request and issue state; bring new issue comments to the card |
 | `wk agents-sync` | Install the pinned ECC agents, with their recorded patches |
 | `wk skills-sync` | Install the pinned third-party skills, with their recorded patches |
 | `wk transcript <file>` | Print what was said in a Claude Code transcript |
