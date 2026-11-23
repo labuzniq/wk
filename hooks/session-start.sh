@@ -2,10 +2,12 @@
 # Adds capsule gaps and a short project context to the session. Must stay fast: no network, no waiting on Orca.
 kit="$(dirname "$0")/.."
 cd "$(jq -r '.cwd')" 2>/dev/null || exit 0
+# shellcheck source=../lib/config.sh
 . "$kit/lib/config.sh"
 declined="$HOME/.local/state/workspace-kit/declined/$(printf '%s' "$PWD" | shasum | cut -d' ' -f1)"
 setup='run `wk adopt` in this folder, commit the files it creates, and tell the user in one line that the project is now set up. Then handle their request.'
 
+# shellcheck source=../lib/project.sh
 if ! . "$kit/lib/project.sh"; then
   case "$PWD/" in "$(wk_config projects_root)"/*) echo "New project folder without a workspace-kit capsule. Before anything else, $setup" ;; esac
   exit 0
@@ -34,6 +36,7 @@ if [ "$root" != "$primary" ]; then
     || card="not cached yet; read it with \`orca worktree current --json\`"
 fi
 vision=$(cd "$root" && ls VISION.md 2>/dev/null || echo "none yet")
+# shellcheck disable=SC2012 # newest by time; spec names are plain
 spec=$(cd "$root" && ls -t docs/specs/*.md 2>/dev/null | head -1)
 
 cat <<CONTEXT

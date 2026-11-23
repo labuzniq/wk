@@ -85,7 +85,7 @@ ORCA_YAML = "scripts:\n  setup: |\n    mise trust -y && mise run setup\n"
 
 
 def tracker_kind(root: Path) -> str:
-    url = subprocess.run(["git", "-C", str(root), "config", "--get", "remote.origin.url"], capture_output=True, text=True).stdout.strip()
+    url = subprocess.run(["git", "-C", str(root), "config", "--get", "remote.origin.url"], check=False, capture_output=True, text=True).stdout.strip()
     host = re.sub(r"^(\w+://)?([^@/]*@)?", "", url).split("/")[0].split(":")[0]
     return next((kind for kind in ("github", "gitlab") if kind in host), "local")
 
@@ -189,9 +189,9 @@ def main() -> None:
     parser.add_argument("--stack", help="comma-separated: " + ",".join(STACKS) + "; detected from the repo when left out")
     parser.add_argument("--with", dest="agents", action="append", default=[], help="extra ECC agent for this project")
     args = parser.parse_args()
-    if subprocess.run(["git", "rev-parse", "--git-dir"], capture_output=True).returncode != 0:
+    if subprocess.run(["git", "rev-parse", "--git-dir"], check=False, capture_output=True).returncode != 0:
         run("git", "init", "-q")
-    if subprocess.run(["git", "rev-parse", "-q", "--verify", "HEAD"], capture_output=True).returncode != 0:
+    if subprocess.run(["git", "rev-parse", "-q", "--verify", "HEAD"], check=False, capture_output=True).returncode != 0:
         run("git", "commit", "-q", "--allow-empty", "-m", f"chore: start {Path.cwd().name}")
     root = Path(run("git", "rev-parse", "--show-toplevel").strip())
     stacks = [s for s in args.stack.split(",") if s] if args.stack is not None else detect_stacks(root)

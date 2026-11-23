@@ -41,6 +41,14 @@ Then do the three manual Orca settings in [`docs/orca-settings.md`](docs/orca-se
 | `wk agents-sync` | Install the pinned ECC agents |
 | `wk transcript <file>` | Print what was said in a Claude Code transcript |
 
+## Checking the kit
+
+```bash
+test/run
+```
+
+One command runs shell lint (`shellcheck`), Python lint (`ruff`) and the tests (`bats`). On top of the kit's own requirements it needs `shellcheck` and `bats` (`brew install shellcheck bats-core`). The tests run in a throwaway home folder with stand-ins for `orca` and `gh`, so they touch neither your Orca board nor GitHub. CI (Continuous Integration) runs the same command on every pull request.
+
 ## Layout
 
 ```
@@ -51,6 +59,7 @@ bin/wk           the CLI; commands live in libexec/
 agents/          which ECC agents, the pinned commit, the lock file
 skills/          project-setup, wiki-ingest, wiki-lint
 templates/       project capsule, vault skeleton, Orca workspace rules for the tracker doc
+test/            `test/run`, the tests, and stand-ins for orca and gh
 docs/            verified facts and the manual Orca checklist
 ```
 

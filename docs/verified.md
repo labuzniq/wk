@@ -120,3 +120,12 @@ The first real use of `to-tickets` created 16 empty workspaces and no issue. Orc
 - `wk adopt` now writes `docs/agents/issue-tracker.md` from the tracker doc that `setup-matt-pocock-skills` ships for the repo's remote (GitHub, GitLab, or local files when there is no such remote), followed by the kit's `templates/orca-workspaces.md`.
 - A workspace is created when work on a ticket starts, never to hold a ticket.
 - `wk doctor` has a `tracker` check that reports a tracker doc of the old kind.
+
+## Kit test harness (2026-11-23)
+
+- confirmed: `test/run` runs shell lint, Python lint and the tests on this Mac. The tests cover the board status rules, the doctor's gap lines, the session queue hook, and `wk adopt` plus `wk doctor` on a scratch project.
+- confirmed: the CI (Continuous Integration) run on GitHub passed on pull request #20, in about 1 minute on a macOS runner.
+- The tests use stand-ins for `orca` and `gh` (`test/stubs/`), so "Orca answers this way" is assumed from the checks above, not tested again.
+- Found by the tests: on a machine without `~/.agents/skills`, the doctor reported `skills_visible: * is not visible to Claude Code`. Fixed.
+- Stock macOS has bash 3.2, which has no `mapfile`; the kit's scripts stay within bash 3.2.
+- CI runs on a macOS runner, because the scripts use the macOS form of `stat` (`stat -f %m`).
