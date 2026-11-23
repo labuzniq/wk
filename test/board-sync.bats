@@ -161,6 +161,29 @@ not_moved() {
   is "$(wc -l < "$GH_STUB/calls" | tr -d ' ')" 2
 }
 
+@test "a card that Orca refuses to move does not stop the cards after it" {
+  card todo
+  commit
+  other="$HOME/projects/other"
+  new_repo "$other"
+  touch "$other/notes.txt"
+  jq --arg other "$other" '{result: {worktrees: [.result.worktree, (.result.worktree | .id = "card-2" | .path = $other | .branch = "refs/heads/main")]}}' \
+    "$ORCA_STUB/current.json" > "$ORCA_STUB/list.json"
+  touch "$ORCA_STUB/set-fails"
+  "$kit/bin/wk" board-sync --repo
+  moved_to in-progress card-2
+}
+
+@test "a checkout with no branch does not shift the card's other fields" {
+  card todo
+  touch "$repo/notes.txt"
+  jq '.result.worktree.branch = "" | .result.worktree.linkedIssue = null | .result.worktree.createdAt = 1767225600000' "$ORCA_STUB/current.json" > "$ORCA_STUB/current.json.new"
+  mv "$ORCA_STUB/current.json.new" "$ORCA_STUB/current.json"
+  "$kit/bin/wk" board-sync
+  moved_to in-progress
+  [ ! -s "$GH_STUB/calls" ]
+}
+
 @test "the main checkout is never moved" {
   card todo true
   touch "$repo/notes.txt"
