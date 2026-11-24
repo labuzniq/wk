@@ -10,7 +10,8 @@ case "$1 ${2:-}" in
   "status --json") [ ! -f "$ORCA_STUB/down" ] ;;
   "worktree current") cat "$ORCA_STUB/current.json" ;;
   "worktree list") cat "$ORCA_STUB/list.json" ;;
-  "worktree set" | "repo set-base-ref" | "skills install") ;;
+  "worktree set" | "repo set-base-ref") ;;
+  "worktree rm") [ ! -f "$ORCA_STUB/rm-fails" ] || { jq -Rc '{ok: false, error: {message: .}}' "$ORCA_STUB/rm-fails"; exit 1; } ;;
   "worktree create")
     # Makes a real git worktree of the repo in the current folder, as Orca would.
     name=""
@@ -26,6 +27,13 @@ case "$1 ${2:-}" in
     jq -c --arg path "$4" '. + [{id: "repo-\(length + 1)", path: $path}]' "$ORCA_STUB/repos.json" > "$ORCA_STUB/repos.json.new"
     mv "$ORCA_STUB/repos.json.new" "$ORCA_STUB/repos.json"
     jq -c '{result: {repo: .[-1]}}' "$ORCA_STUB/repos.json"
+    ;;
+  "skills install")
+    shift 2
+    while [ $# -gt 0 ]; do
+      [ "$1" != --skill ] || { mkdir -p "$HOME/.agents/skills/$2"; echo "# stand-in $2" > "$HOME/.agents/skills/$2/SKILL.md"; }
+      shift
+    done
     ;;
   "automations list") jq -c '{result: {automations: .}}' "$ORCA_STUB/automations.json" ;;
   "automations create")

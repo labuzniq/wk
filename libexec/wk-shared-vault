@@ -132,12 +132,16 @@ fi
 settings="$HOME/.claude/settings.json"
 [ -f "$settings" ] || { mkdir -p "$(dirname "$settings")"; echo '{}' > "$settings"; }
 if ! jq -e --arg vault "$vault" '.permissions.additionalDirectories // [] | index($vault)' "$settings" >/dev/null; then
-  backup_dir="$HOME/.claude/backup/$(date +%Y%m%d-%H%M%S)"
-  mkdir -p "$backup_dir"
-  cp "$settings" "$backup_dir/"
+  saved=""
+  if [ -z "${WK_SETTINGS_SAVED:-}" ]; then
+    backup_dir="$HOME/.claude/backup/$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$backup_dir"
+    cp "$settings" "$backup_dir/"
+    saved=" (backup in $backup_dir)"
+  fi
   jq --arg vault "$vault" '.permissions.additionalDirectories = ((.permissions.additionalDirectories // []) + [$vault])' "$settings" > "$settings.new"
   mv "$settings.new" "$settings"
-  echo "allowed the shared vault in $settings (backup in $backup_dir)"
+  echo "allowed the shared vault in $settings$saved"
 fi
 
 # The doctor reads this stamp instead of asking Orca: it is written only once the automation is there.

@@ -33,6 +33,7 @@ setup_home() {
   # The installed kit: the real templates, and a lock file that matches one stand-in agent.
   mkdir -p "$HOME/kit/agents" "$HOME/.claude/agents/ecc" "$HOME/.claude/skills"
   ln -s "$kit/templates" "$HOME/kit/templates"
+  echo "@$HOME/kit/claude/CLAUDE.md" > "$HOME/.claude/CLAUDE.md"
   echo "stand-in agent" > "$HOME/.claude/agents/ecc/reviewer.md"
   jq -n --arg sha "$(shasum -a 256 "$HOME/.claude/agents/ecc/reviewer.md" | cut -d' ' -f1)" \
     '{agents: {reviewer: {installed_sha256: $sha}}}' > "$HOME/kit/agents/agents.lock"
@@ -46,6 +47,13 @@ setup_home() {
   ln -s "$matt" "$HOME/.claude/skills/setup-matt-pocock-skills"
   jq -n --arg sha "$(skills_sha256 setup-matt-pocock-skills)" \
     '{installed_sha256: $sha, skills: {"setup-matt-pocock-skills": {}}}' > "$HOME/kit/skills.lock"
+}
+
+# installed_only: the kit state of a person who ran install.sh and nothing else: only their shared vault is set up.
+installed_only() {
+  rm -r "$state"
+  mkdir -p "$state"
+  echo "$HOME/shared-vault" > "$state/shared-vault-ready"
 }
 
 # no_shared_vault: the home of a kit installed before the shared vault existed.

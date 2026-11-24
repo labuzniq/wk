@@ -155,6 +155,99 @@ This replaces "in an existing repo with history it asks once" from the change of
 - confirmed with stand-ins for `orca` and `gh`. The Orca and gh calls it makes (`orca worktree create --repo --name --no-parent --setup skip --comment --json`, `orca worktree set --pr --workspace-status`, `gh pr create`, `gh pr view --json state`, `gh pr list --head`, `gh repo view --json owner`, `gh api user`) were each used by hand on this Mac the same day or are read in `--help`.
 - open: one whole run of `wk adopt-pr` against a real repo on GitHub.
 
+## A second person (2026-11-23)
+
+- docs: a `CLAUDE.md` file imports another file with a line `@path/to/file`. Relative and absolute paths are allowed; a relative path is read from the folder of the file that holds the import. A space in the path needs a backslash before it. Imports nest up to four levels, and an `@` inside a code span or a code block is no import. Source: https://code.claude.com/docs/en/memory, "Import additional files".
+- docs: imports in the user-level `~/.claude/CLAUDE.md` load without an approval dialog (except in Cowork sessions); the dialog is only for a project file that imports a file outside the project. Same page.
+- open: the import in `~/.claude/CLAUDE.md` was not seen working in a real session. A run with a throwaway `CLAUDE_CONFIG_DIR` stops at "Not logged in", and the real `~/.claude` is out of bounds for a ticket. To check after the next installer run: start a session and ask which sections the global instructions hold.
+- open (not in the docs): what Claude Code does when the imported file is missing, and where a relative import is read from when `CLAUDE.md` is a link. The kit avoids both: the import is an absolute path, `~/.claude/CLAUDE.md` is a real file, and `wk doctor` has an `instructions` check for the import line.
+- confirmed: `orca repo show --repo path:<primary checkout> --json` finds the repo on this Mac, and answers `repo_not_found` for the path of a worktree. The tracker doc now names the repo by `path:`, so no committed file needs the Orca repo id.
+- `install.sh`: `~/.claude/CLAUDE.md` is the person's own file with one import line for `claude/CLAUDE.md`. A missing file is written, a file without the line gets it as its first line (backup first, text kept), and a link of the old layout becomes a real file that also holds the Language section the kit used to ship (`claude/personal-before-split.md`). A missing `~/.claude/settings.json` no longer stops the installer.
+- `wk adopt` saves the Orca repo id in `~/.local/state/workspace-kit/repos/<checksum of the primary checkout's path>`, and the `orca_repo` check reads that file (no Orca call). This replaces the Phase 5 line "`orca_repo` passes when `orca_repo_id` is set in `.workspace-kit.toml`".
+- A capsule from before this change still has `orca_repo_id` in its manifest. The doctor and the hooks ignore the line. Each person gets the `orca_repo` gap once per project, and the agent fixes it with `wk adopt`. In the primary checkout `wk adopt` also removes the line, swaps the two places in `docs/agents/issue-tracker.md` that name the id, and prints both; the `shared_values` check asks for this in the primary checkout only, so a ticket's worktree gets no unrelated change.
+- `wk adopt` takes the slug from a manifest that is already there. Before, a clone in a folder of another name got automations and a session queue under the folder's name. Found by the new test.
+- confirmed: `test/install.bats` runs a copy of `install.sh` in a throwaway home with stand-ins for `wk`, `orca` and `npx`: a fresh install, a second run, an install of the old layout, and a file the person wrote themselves. The real installer was not run on this Mac.
+
+## Worktree cleanup (2026-11-23)
+
+Orca 1.4.271. Nothing was removed on this Mac for these checks: `orca workspace cleanup run` was not run, and `wk worktree-cleanup` ran only in the tests, against a stand-in for `orca`.
+
+- docs: Orca has its own cleanup (`orca workspace cleanup preview`, `run`, `report`). Its rules "are set in Orca settings; these commands never change them" (`--help`).
+- confirmed: no cleanup rule is on here. `preview --json` gives every worktree `evaluation: {action: "keep", cause: "rules-off"}` (main checkouts: `not-removable`), and `report --json` gives `runs: []`, `nextRunAt: null`.
+- open: whether an Orca rule can say "branch merged and card completed for 14 days, keep the branch, keep a worktree with uncommitted or untracked files". The CLI (Command Line Interface) does not print the rules or their options, and no file under `~/Library/Application Support/orca/` names them. It needs a look in the Orca settings window. Until then the kit holds the rule itself, in `wk worktree-cleanup`; leave Orca's own rules off so that only one thing removes worktrees.
+- confirmed: `orca worktree list --json` gives no time at which a card became completed. A card has `createdAt`, `lastActivityAt` and `workspaceStatus` only. `wk worktree-cleanup` therefore writes down the time it first sees a card completed (`~/.local/state/workspace-kit/completed/`), and counts the 14 days from there. That time is never earlier than the real one, so a worktree is never removed too soon; with a daily run it is one to two days late. It covers a card completed by `wk board-sync`, by the agent or by hand.
+- confirmed: a card has an `instanceId` next to its `id`. The `id` is `<repoId>::<path>`, so a new worktree at the same path gets the same `id`; the noted time is filed under `instanceId`. Open: that a new worktree at an old path gets a new `instanceId` was not tested. If it does not, the time is still dropped on the first run that sees the new card not completed.
+- confirmed: `orca worktree list --repo path:<primary checkout> --limit <n> --json` lists one project's worktrees, and says `truncated: true` when the limit cut the list.
+- confirmed: a failed Orca call with `--json` exits 1 and prints `{"ok": false, "error": {"message": ...}}` on standard output. Seen with `orca worktree rm --worktree current --json`, which Orca always refuses.
+- docs: `orca worktree rm` without `--delete-branch` keeps the local branch, and without `--force` forces nothing (`--help`). `wk worktree-cleanup` passes neither flag.
+- open: whether the card stays on the board after `orca worktree rm`. The ticket asks for it. Testing it means removing a real worktree, which was not done. There is no `orca worktree archive` command.
+- open: whether the precheck of an automation runs with `orca`, `jq`, `gh` and `git` on `PATH`. If it does not, the precheck fails, the run shows as `skipped_precheck` in `orca automations runs`, and nothing is removed. The automation was created only against the stand-in.
+- "Merged" is checked as: the worktree's newest commit is reachable from the card's base ref, or `gh pr view <branch>` says `MERGED` with that same commit as its head. A squash merge is therefore seen only through GitHub; a GitLab squash merge is not seen and the worktree stays.
+- `git worktree remove`, which Orca calls, deletes ignored files (such as `.env` or `node_modules`) together with the folder. Only uncommitted and untracked files keep a worktree.
+- `wk doctor` makes no Orca call, so it cannot ask Orca for the automations. `wk adopt` writes the names of the automations it made sure of into its marker file in `~/.local/state/workspace-kit/automations/` (see the section above), and the doctor's `cleanup_automation` check reads the names. A project adopted before this change shows the gap once; `wk adopt` then creates the automation.
+
+## Starter checks (2026-11-23)
+
+Each config in `templates/checks/starter/` was run on this Mac in a throwaway project: once on a file with every mistake, once on a clean file.
+
+- confirmed: `mise x <tool>@<version> -- <command>` downloads the tool on first use and runs it with no `[tools]` entry; tested with mise 2026.11.12 for `ruff@0.17.6`, `biome@2.6.8` and `swiftlint@0.65.1`. The starter command in the lint task is therefore one line that needs nothing from the project.
+- confirmed: `mise run lint` runs each entry of a `run` list through a shell, so `<linter> || { cat <messages>; exit 1; }` prints the messages and fails the task. Tested for all three stacks after a real `wk adopt` in a throwaway HOME.
+- confirmed (ruff 0.17.6): `ruff check --config checks/starter/python.toml` uses only that file, also when `pyproject.toml` has its own `[tool.ruff]`. The file may have any name that ends in `.toml`. Paths under `[lint.per-file-ignores]` are relative to the folder ruff runs in. `S110` reports `except ValueError: pass` only with `check-typed-exception = true`. All six rules fired; the clean file passed.
+- confirmed (Biome 2.6.8): a file named `biome.json` in a subfolder stops the run with "Found a nested root configuration"; a file with another name, given as `--config-path=checks/starter/ts.json`, works, also beside a `biome.json` at the root. `"recommended": false` prints a deprecation warning; `"preset": "none"` is the current form. With `vcs.useIgnoreFile` the files in `.gitignore` are not checked. All six rules fired; the clean file passed.
+- confirmed (SwiftLint 0.65.1): `excluded` paths are relative to the config file, not to the folder SwiftLint runs in. `--strict` makes a finding exit with a code other than 0. With `--config`, a `.swiftlint.yml` at the root is not read. `match_kinds: identifier` keeps the `print` rule quiet in strings and comments. All five rules fired; the clean file passed.
+- ruff cannot change the text of a rule's message, and SwiftLint only for its custom rules. So each stack has a messages file that the lint task prints on failure, after the linter's own lines.
+- open: the starter command inside an Orca worktree and in a project's CI (Continuous Integration); both need `mise` and network on the first run. Not tested: it needs a real adopted project.
+- open: Biome and SwiftLint on a large real project (noise from `noEmptyBlockStatements` on empty functions, speed). Tested on throwaway files only.
+- confirmed: a folder is kept out of the starter checks with `extend-exclude` (ruff, path relative to the project root), `"!<folder>"` in `files.includes` (Biome) and `excluded` (SwiftLint). The project's own excludes are not read, because `--config` replaces the project's config. Each messages file says where to add a folder.
+- confirmed (SwiftLint 0.65.1): with no Swift file the run fails with "No lintable files found"; `allow_zero_lintable_files: true` makes it pass. ruff and Biome pass with no file.
+- confirmed (Biome 2.6.8): `// biome-ignore lint/suspicious/noConsole: <reason>` on the line above switches the rule off for that line.
+- The starter command is first in the lint task: mise stops at the first command that fails, and the project's own linter may not be installed yet.
+- The tests in `test/` need no network. `test/starter-checks.bats` runs the real ruff from the uv cache (`uvx --offline`; `test/run` fills the cache in its Python lint step) and the real SwiftLint when it is installed; each test is skipped when its tool is missing. Biome is not run by the tests.
+
+## Corrections become checks (2026-11-23)
+
+- confirmed: `git log --all -E --grep` matches each line of a commit message on its own, so `Correction: <key>` is found as the last line of a commit and inside a squashed message. Tested with git 2.48 on this Mac by `test/corrections.bats`.
+- confirmed: a squash merge on GitHub keeps the full messages of the squashed commits, not indented (see commits #20 to #22 of this repo), so the `Correction: <key>` line survives a squash merge with the default message. Not tested: a repo set to use only the pull request title as the squash message; there the line is lost and the correction is reported again.
+- confirmed: `git revert` writes a new message without the lines of the old one, and the old commit stays in the history, so a reverted check still counts as handled.
+- confirmed: `wk corrections` with 3 records, one of them due, takes about 0.08 seconds under stock bash 3.2 (one `awk` per record, and one `git log` for all due records together); the doctor calls it in every session and it makes no network call.
+- confirmed: bash 3.2 does not read `$'\n'` inside a here-document, so the script splits lines before the here-document.
+- A check counts as missed when a session summary in the record is dated after the day of the check's commit; a correction made again on the same day is not seen until a later session.
+- open: no real ingest run has written correction records yet. The record form and the two skill texts are tested only through `wk corrections` and `wk doctor` with hand-made records.
+
+## Opt-in self-merge (2026-11-23)
+
+- confirmed: `gh pr view --json number,url,state,isDraft,isCrossRepository,baseRefName,headRefOid,changedFiles,statusCheckRollup,author,body` answers in one call (gh 2.88.1, read on pull request #22). A GitHub Actions job is one `statusCheckRollup` entry with `__typename` `CheckRun`, `status` `COMPLETED` and `conclusion` `SUCCESS`.
+- docs: a commit status (not a check run) is an entry with `__typename` `StatusContext` and a `state` of `SUCCESS`, `PENDING`, `FAILURE`, `ERROR` or `EXPECTED` (GitHub GraphQL reference). Not seen on this repo, which has no such status.
+- confirmed: `gh api repos/<owner>/<repo> --jq .default_branch` prints the default branch.
+- confirmed: `gh api -H "Accept: application/vnd.github.raw" "repos/<owner>/<repo>/contents/<file>?ref=<branch>"` prints the file as it is on that branch; a file that is not there exits 1 with `HTTP 404`. `wk self-merge` reads the flag this way, so the copy in the worktree and the copy on the pull request's branch do not count.
+- confirmed: `gh api --paginate repos/<owner>/<repo>/pulls/<number>/files` lists each changed file as `filename`; docs: a moved file also has `previous_filename`, and the list ends at 3,000 files (GitHub REST reference). The command compares the count with `changedFiles` and refuses when they differ.
+- confirmed: `gh api user --jq .login` prints the account `gh` is logged in as.
+- docs: `gh pr merge <number> --squash --match-head-commit <sha>` merges only when the pull request's head is still that commit; `gh pr revert <number>` opens a pull request that undoes a merged one (`--help` of gh 2.88.1).
+- docs: `orca worktree set --worktree id:<id> --workspace-status completed --comment <text> --json` (`--help`); confirmed: `orca worktree current --json` has `id`, `comment` and `isMainWorktree` under `.result.worktree`.
+- open: no real pull request was merged by `wk self-merge`; the merge, the edit of the pull request body and the card update are tested with the stand-ins only, because the ticket forbids a real merge.
+- open: with a merge queue, `gh pr merge` may return before the merge. The command then reports "not merged yet" and leaves the card to `wk board-sync`. Not tested for real.
+- open: a required check that has not reported yet may be missing from `statusCheckRollup`. GitHub's branch protection then refuses the merge, and the command never passes `--admin`; without branch protection such a check is not seen.
+- open: when one check name ran twice on a commit and one run failed, the command counts the failure, even if the later run passed.
+- The record lives in the pull request body, not in a file under the kit's state folder: the owner can see it on GitHub, it survives a new session and a new machine, and it sits next to the proof. It names the reviewed commit, so a record copied from another pull request or left over from before a push does not count.
+
+## Rules into hooks (2026-11-23)
+
+Claude Code 2.1.311. The list of rules, and which hook checks which, is in `docs/rules.md`.
+
+- confirmed: a `PreToolUse` hook gets JSON on stdin with `session_id`, `transcript_path`, `cwd`, `permission_mode`, `hook_event_name`, `tool_name`, `tool_input` and `tool_use_id`. For `Bash`, `tool_input` holds `command` and `description`; for `Write`, `file_path` (a full path) and `content`. Read from a real session with a hook that saved its input.
+- confirmed: a hook that exits with code 2 stops the tool call, and the agent gets the hook's stderr as `PreToolUse:<tool> hook error: [<hook path>]: <stderr>`. Tested in a real session in a throwaway repo: `git commit -m "wip"` and a `Write` under the vault's `wiki/` did not run, and the agent quoted the message word for word; `git commit -m "chore: second"` ran.
+- confirmed: the block holds in `bypassPermissions` mode, and against a `permissions.allow` rule that matches the command (`Bash(git *)`, with `git push --force origin main`).
+- confirmed: the matcher `Bash` and the matcher `Write|Edit|MultiEdit|NotebookEdit` ran the hooks for `Bash` and `Write` calls.
+- docs: `tool_input` of `Edit` holds `file_path`. The docs do not list the fields of `MultiEdit` and `NotebookEdit`; the hook reads `file_path`, then `notebook_path`. A `NotebookEdit` call with another field name passes with the "not checked" line.
+- confirmed: a hook that exits with code 1 does not block: in a real session the Bash call ran, and the agent did not see the hook's stderr. docs: the transcript shows it to the owner as a hook error. The hooks use exit 1 with one line on stderr for input they cannot read.
+- docs: hooks from the settings files also run inside subagents. Not tried in a real session.
+- docs: the hook input has no field that names the skill in use. This is why the wiki check reads the `no-capture` mark the wiki skills set in their first step, and why "load the `orca-cli` skill first" stays a judgment rule.
+- confirmed: `${CLAUDE_SESSION_ID}` in a skill loaded with the Skill tool is replaced by the same value as `session_id` in the hook input. The Bash tool also has it as the environment value `CLAUDE_CODE_SESSION_ID`; it has no `CLAUDE_SESSION_ID`. Tested with a stand-in skill in a real session.
+- open: when the agent reads a wiki skill's `SKILL.md` as a file, `${CLAUDE_SESSION_ID}` is not replaced, the shell sees an empty value and no mark is made. Nobody has seen this happen with the wiki skills. For that case the wiki check's message gives the exact command that marks the session, so a wiki run is not stuck. The skills are left as they are.
+- confirmed: time for one call on this Mac, average of 10: a Bash call without the word `git` 13 ms; a git command 28 ms; a forced push without a branch (one local `git branch --show-current`) 44 ms; a file write outside `wiki/` 24 ms; a file write under a `wiki/` folder 135 ms.
+- confirmed: `jq` needs more time with every word: a Bash call of 10,000 characters made only of quoted words took 0.7 seconds, one of 20,000 took 2 seconds. A usual long command (one heredoc of 430,000 characters) took 0.2 seconds. The hook therefore does not check input above 12,000 characters.
+- confirmed: `jq` 1.7.1 (the one macOS ships) runs `hooks/check-command.jq`: named groups, back references and lazy matching work in its regular expressions.
+
 ## Shared vault (2026-11-23)
 
 - confirmed: `wk shared-vault` in a throwaway home creates the vault as its own git repo, with one commit, and a second run changes nothing. `install.sh` was run in a throwaway home with stand-ins for `orca` and `npx` (`test/install.bats`); it was not run against the real home.
@@ -169,4 +262,3 @@ This replaces "in an existing repo with history it asks once" from the change of
 - The check knows a project by its capsule (`.workspace-kit.toml`, up to three levels under the projects folder: its folder name and its slug) and by its session queue folder. A folder that only groups projects is not a name. Customers, people, repo addresses and code are not something the check can see; the skill text and the vault's schema carry that rule.
 - open: every project's ingest runs at 07:30 and may write the shared vault in the same minutes. The skill keeps that step short (new source files first, wiki pages and the commit in one go at the end); two runs have not been tried side by side.
 - Found on the way: on bash 3.2 a failing `[[ … ]]` in the middle of a bats test does not fail the test. The new tests use `has` and `lacks` from `test/helpers.bash`; the older tests still hold such lines.
-- Found on the way: `install.sh` stops on a Mac that has no `~/.claude/settings.json`, because `jq` cannot read the missing file. Not changed here.

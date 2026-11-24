@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Installs the kit for one person. Can run again at any time: it prints what it wrote, moved or backed up, and keeps the rest.
 set -euo pipefail
 
 kit="$(cd "$(dirname "$0")" && pwd)"
@@ -32,15 +33,42 @@ if [ ! -f "$config" ]; then
   echo "wrote $config"
 fi
 
-link "$kit/claude/CLAUDE.md" "$claude_dir/CLAUDE.md"
+# ~/.claude/CLAUDE.md is the person's own file. It imports the shared instructions; the rest of it is never replaced.
+shared="$kit/claude/CLAUDE.md"
+personal="$claude_dir/CLAUDE.md"
+import="@${shared// /\\ }"
+note='<!-- This file is yours: install.sh never replaces it. Keep the @ line above, it loads the instructions the kit shares. Write your own rules below. -->'
+mkdir -p "$claude_dir"
+if [ -L "$personal" ] && [ "$(readlink -f "$personal")" = "$(readlink -f "$shared")" ]; then
+  backup "$personal"
+  rm "$personal"
+  { printf '%s\n\n# My instructions\n\n%s\n\n' "$import" "$note"; cat "$kit/claude/personal-before-split.md"; } > "$personal"
+  echo "moved $personal to the new layout: it was a link to $shared, now it is your own file that imports it and holds the personal lines the kit used to ship"
+elif [ ! -e "$personal" ]; then
+  printf '%s\n\n# My instructions\n\n%s\n' "$import" "$note" > "$personal"
+  echo "wrote $personal: it imports $shared; add your own rules to it"
+elif ! grep -qxF "$import" "$personal"; then
+  # A copy of the text, not of a link: the file behind a link is about to change.
+  mkdir -p "$backup_dir"
+  cp -L "$personal" "$backup_dir/"
+  echo "backed up $personal to $backup_dir"
+  text=$(cat "$personal")
+  # Written in place, so a file that is a link into the person's own dotfiles stays a link.
+  printf '%s\n\n%s\n' "$import" "$text" > "$personal"
+  echo "added the import of $shared as the first line of $personal; your text is kept"
+fi
 
 kit_skills=$(cat "$kit/skills.txt" | cut -d' ' -f2- | tr ' ' '\n' | jq -R . | jq -sc '. + ["orca-cli", "orca-computer-use", "orchestration", "resolving-merge-conflicts"]')
-merged=$(jq --arg kit "$kit" --argjson skills "$kit_skills" --slurpfile fragment "$kit/claude/settings.fragment.json" -f "$kit/claude/merge-settings.jq" "$claude_dir/settings.json")
-if [ "$merged" != "$(jq . "$claude_dir/settings.json")" ]; then
+current='{}'
+[ ! -f "$claude_dir/settings.json" ] || current=$(jq . "$claude_dir/settings.json")
+merged=$(jq --arg kit "$kit" --argjson skills "$kit_skills" --slurpfile fragment "$kit/claude/settings.fragment.json" -f "$kit/claude/merge-settings.jq" <<<"$current")
+if [ "$merged" != "$current" ]; then
   backup "$claude_dir/settings.json"
   printf '%s\n' "$merged" > "$claude_dir/settings.json.new"
   mv "$claude_dir/settings.json.new" "$claude_dir/settings.json"
   echo "merged settings fragment into $claude_dir/settings.json"
+  # The file as it was before this run is in the backup, or there was none: `wk shared-vault` needs no second copy.
+  export WK_SETTINGS_SAVED=1
 fi
 
 mkdir -p "$claude_dir/skills"
