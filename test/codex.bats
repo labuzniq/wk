@@ -28,8 +28,8 @@ snapshot() {
   find "$HOME/.claude" "$HOME/.codex" "$HOME/.agents" "$HOME/.local/bin" -type l -exec ls -l {} + 2>/dev/null | awk '{print $(NF-2), $NF}' | sort
 }
 
-# The kit's part of ~/.codex/AGENTS.md, without its two marker lines.
-kit_block() { sed -n '/^<!-- workspace-kit:begin/,/^<!-- workspace-kit:end/p' "$1" | sed '1d;$d'; }
+# The kit's part of ~/.codex/AGENTS.md: the lines between the first begin marker and the end marker.
+kit_block() { awk '/^<!-- workspace-kit:end/ {exit} on {print} /^<!-- workspace-kit:begin/ {on = 1}' "$1"; }
 
 @test "without codex on PATH the installer leaves Codex alone and says so in one line" {
   install
@@ -185,4 +185,17 @@ codex_session_starts() {
   [ "$status" -eq 0 ]
   [[ "$output" == "Project: demo (code)"* ]]
   [[ "$output" != "{"* ]]
+}
+
+@test "a begin marker without an end marker keeps everything below it" {
+  mkdir -p "$HOME/.codex"
+  printf '<!-- workspace-kit:begin\n- my own rule\n' > "$agents_md"
+  with_codex install
+  [ "$status" -eq 0 ]
+  is "$(kit_block "$agents_md")" "$(cat "$copy/claude/CLAUDE.md")"
+  grep -qx -- '- my own rule' "$agents_md"
+  before=$(snapshot)
+  with_codex install
+  is "$(snapshot)" "$before"
+  grep -qx -- '- my own rule' "$agents_md"
 }

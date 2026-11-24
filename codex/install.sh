@@ -12,7 +12,9 @@ else
   end='<!-- workspace-kit:end -->'
   if [ -e "$agents_md" ]; then
     current=$(cat "$agents_md")
-    rest=$(awk '/^<!-- workspace-kit:begin/ {skip = 1} !skip {print} /^<!-- workspace-kit:end -->/ {skip = 0}' "$agents_md" | sed '/./,$!d')
+    # A begin line without an end line below it is kept as the person's text, so nothing of theirs is dropped.
+    rest=$(awk '/^<!-- workspace-kit:begin/ && !held {held = 1; kept = ""} held {kept = kept $0 "\n"; if (/^<!-- workspace-kit:end -->/) held = 0; next} {print}
+      END {if (held) printf "%s", kept}' "$agents_md" | sed '/./,$!d')
   else
     current=""
     rest='# My instructions'
