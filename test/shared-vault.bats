@@ -114,7 +114,7 @@ session_start() {
   adopted_project
   touch "$ORCA_STUB/down"
   run "$kit/bin/wk" shared-vault
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 75 ]
   has "$output" "created $vault"
   has "$output" "Orca did not answer"
   "$kit/bin/wk" doctor > /dev/null # the first run reports the deferred vision once

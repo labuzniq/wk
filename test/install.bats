@@ -1,5 +1,6 @@
 #!/usr/bin/env bats
-# `install.sh` in a throwaway HOME: the config, the global instructions, the settings and the shared vault. Skill and agent syncs are stand-ins.
+# `install.sh` in a throwaway HOME: the config, the global instructions, the settings, the weekly pin update in Orca
+# and the shared vault. Skill and agent syncs are stand-ins.
 
 # shellcheck disable=SC2154 # kit and the helpers come from helpers.bash
 load helpers
@@ -51,7 +52,7 @@ changes() { grep -E '^(wrote|moved|added|merged|linked|backed up|created|allowed
   has "$output" "created $vault"
   [ -f "$vault/wiki/learnings.md" ]
   is "$(jq -r '.permissions.additionalDirectories[]' "$HOME/.claude/settings.json")" "$vault"
-  is "$(jq -r '.[].name' "$ORCA_STUB/automations.json")" "Wiki lint: shared"
+  is "$(jq -r '.[].name' "$ORCA_STUB/automations.json" | grep shared)" "Wiki lint: shared"
 }
 
 @test "an install that changes no setting backs up the settings before it allows the shared vault" {
@@ -75,14 +76,27 @@ changes() { grep -E '^(wrote|moved|added|merged|linked|backed up|created|allowed
   is "$(tail -1 "$vault/wiki/learnings.md")" "A lesson."
 }
 
-@test "with Orca closed everything else is installed and the installer fails with the reason" {
+@test "with Orca closed the shared vault is made, and the next install with Orca adds its automation" {
   touch "$ORCA_STUB/down"
   install
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 0 ]
   has "$output" "Orca did not answer"
   [ -L "$HOME/.local/bin/wk" ]
   [ -f "$mine" ]
   [ -f "$vault/wiki/learnings.md" ]
+  [ ! -e "$HOME/.local/state/workspace-kit/shared-vault-ready" ]
+  rm "$ORCA_STUB/down"
+  install
+  has "$output" "created automation 'Wiki lint: shared'"
+  is "$(cat "$HOME/.local/state/workspace-kit/shared-vault-ready")" "$vault"
+}
+
+@test "a failure that is not about Orca fails the install" {
+  mkdir -p "$HOME/.config/workspace-kit"
+  printf 'projects_root = "%s"\nkit = "%s"\nshared_vault = "notes"\n' "$HOME/projects" "$copy" > "$HOME/.config/workspace-kit/config.toml"
+  install
+  [ "$status" -eq 1 ]
+  has "$output" "write it as a full path"
 }
 
 @test "a second run changes nothing and says so by printing no change" {
@@ -141,4 +155,53 @@ changes() { grep -E '^(wrote|moved|added|merged|linked|backed up|created|allowed
   install
   run "$kit/bin/wk" doctor
   [[ "$output" != *instructions:* ]]
+}
+
+@test "the installer creates the weekly pin update automation in the kit's own workspace" {
+  install
+  [ "$status" -eq 0 ]
+  is "$(jq -r '.[].name' "$ORCA_STUB/automations.json")" $'Pin update\nWiki lint: shared'
+  [[ "$output" == *"created automation 'Pin update'"* ]]
+  created=$(grep "^automations create --name Pin update " "$ORCA_STUB/calls")
+  [[ "$created" == *"--trigger weekly --day 1 --time 08:00"* ]]
+  [[ "$created" == *'Run `wk pins-update`.'* ]]
+  [[ "$created" == *"--provider claude --workspace path:$copy --fresh-session --enabled"* ]]
+  is "$(jq -r '.[].path' "$ORCA_STUB/repos.json")" "$copy"$'\n'"$vault"
+}
+
+@test "a second install creates no second automation" {
+  install
+  install
+  [ "$status" -eq 0 ]
+  is "$(jq length "$ORCA_STUB/automations.json")" 2
+  is "$(jq length "$ORCA_STUB/repos.json")" 2
+  [[ "$output" != *"created automation"* ]]
+}
+
+@test "an automation that is already in Orca is kept and named" {
+  echo '[{"name": "Pin update"}]' > "$ORCA_STUB/automations.json"
+  install
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"kept automation 'Pin update'"* ]]
+  is "$(jq -r '[.[].name | select(. == "Pin update")] | length' "$ORCA_STUB/automations.json")" 1
+}
+
+@test "an automation the owner removed is not created again" {
+  install
+  echo '[]' > "$ORCA_STUB/automations.json"
+  install
+  [ "$status" -eq 0 ]
+  is "$(jq length "$ORCA_STUB/automations.json")" 0
+  has "$output" "kept automation 'Wiki lint: shared' removed (created before;"
+  [[ "$output" == *"kept automation 'Pin update' (created before; delete $HOME/.local/state/workspace-kit/pin-update-automation"* ]]
+}
+
+@test "when Orca does not answer, the install goes on and says the automation is not created" {
+  touch "$ORCA_STUB/down"
+  install
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Orca gave no list of automations, so 'Pin update' is not created; start Orca and run install.sh again"* ]]
+  [ -L "$HOME/.local/bin/wk" ]
+  [ ! -e "$HOME/.local/state/workspace-kit/pin-update-automation" ]
+  has "$output" "Orca did not answer, so the automation 'Wiki lint: shared' is not set up yet"
 }

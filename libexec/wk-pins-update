@@ -1,0 +1,316 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# ///
+"""Offer newer versions of the pinned skills and agents as a pull request; merge it when the three merge conditions hold."""
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import tomllib
+from pathlib import Path
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+import patches
+
+LIBEXEC = Path(__file__).resolve().parent
+KIT = Path(tomllib.loads((Path.home() / ".config/workspace-kit/config.toml").read_text())["kit"])
+LIMIT = 50
+BRANCH_PREFIX = "pins-update/"
+BODY_DIFF_LIMIT = 50_000  # GitHub cuts a pull request text at 65,536 characters
+LINE_LIMIT = 1000  # longer than any line installed today (938); a longer changed line could hide a page of text in one counted line
+# The only variables a throwaway install sees: no token, no config path that leads back to the real home.
+# NPX_STUB is where the tests' stand-in for npx keeps its answers.
+KEPT = {"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TERM", "USER", "LOGNAME", "SHELL",
+        "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "NPX_STUB"}
+LOCK_FILES = {"skills.txt", "agents/agents.toml", "skills.lock", "agents/agents.lock"}
+os.environ["GIT_TERMINAL_PROMPT"] = "0"  # a run started by Orca has nobody to type a password
+# The doctor's checks of one project, of the person's own instructions file and of their shared vault. The throwaway home
+# has none of them, so only the checks of the pinned install count: skills_visible, skills, agents, patches.
+SKIPPED_CHECKS = ["claude_md", "mise", "orca_repo", "shared_values", "orca_files", "orca_setup_hook", "starter_checks",
+                  "vision", "vision_fresh", "matt_setup", "tracker", "automations", "cleanup_automation", "vault_page",
+                  "proposals", "instructions", "shared_vault"]
+
+
+def call(*args: object, cwd: Path | None = None, env: dict | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run([str(arg) for arg in args], cwd=cwd, env=env, check=False, capture_output=True, text=True, stdin=subprocess.DEVNULL)
+
+
+def said(result: subprocess.CompletedProcess) -> str:
+    return (result.stdout + result.stderr).strip()
+
+
+def run(*args: object, cwd: Path | None = None, env: dict | None = None, ok: tuple[int, ...] = (0,)) -> str:
+    """The command's output; a command that fails ends the run, before anything is pushed."""
+    result = call(*args, cwd=cwd, env=env)
+    if result.returncode not in ok:
+        sys.exit(f"pins-update: `{' '.join(str(arg) for arg in args)}` failed; nothing was pushed. Its message:\n{said(result)}")
+    return result.stdout
+
+
+def newest(url: str) -> str:
+    if url.startswith("-"):
+        sys.exit(f"pins-update: '{url}' is not a repo; fix the source in agents/agents.toml")
+    answer = run("git", "ls-remote", url, "HEAD").split()
+    if not answer or not re.fullmatch(r"[0-9a-f]{40}", answer[0]):
+        sys.exit(f"pins-update: {url} has no HEAD commit; check the source in skills.txt or agents/agents.toml")
+    return answer[0]
+
+
+def throwaway_home(home: Path, kit: Path) -> dict:
+    """The environment of a sync that installs into `home` and reads its pins from `kit`; the real home is not touched."""
+    (home / ".config/workspace-kit").mkdir(parents=True)
+    (home / ".config/workspace-kit/config.toml").write_text(
+        f"projects_root = {json.dumps(str(home / 'projects'))}\nkit = {json.dumps(str(kit))}\n")
+    env = {key: value for key, value in os.environ.items() if key in KEPT}
+    return env | {"HOME": str(home), "npm_config_cache": str(home.parent / "npm-cache"), "GIT_TERMINAL_PROMPT": "0"}
+
+
+def upstream_skills(work: Path, side: str, skills_txt: str) -> None:
+    """Install the skills as upstream wrote them (no patches) into work/upstream/<side>/skills."""
+    kit = work / f"kit-{side}"
+    kit.mkdir()
+    (kit / "skills.txt").write_text(skills_txt)
+    home = work / f"home-{side}"
+    run(sys.executable, LIBEXEC / "wk-skills-sync", env=throwaway_home(home, kit))
+    (work / "upstream" / side).mkdir(parents=True)
+    shutil.move(home / ".agents/skills", work / "upstream" / side / "skills")
+
+
+def upstream_agents(work: Path, repo: str, commits: dict[str, str], names: list[str]) -> None:
+    """Write the agents as upstream wrote them into work/upstream/<side>/agents."""
+    checkout = work / "agents-repo"
+    run("git", "init", "-q", checkout)
+    for side, commit in commits.items():
+        run("git", "-C", checkout, "fetch", "-q", "--depth", "1", repo, commit)
+        folder = work / "upstream" / side / "agents"
+        folder.mkdir(parents=True)
+        for name in names:
+            if call("git", "-C", checkout, "cat-file", "-e", f"FETCH_HEAD:agents/{name}.md").returncode != 0:
+                sys.exit(f"pins-update: {repo} at {commit[:10]} has no agent '{name}'; nothing was pushed. "
+                         "Remove it from agents/agents.toml, or keep the old pin and look for its new name upstream.")
+            (folder / f"{name}.md").write_text(run("git", "-C", checkout, "show", f"FETCH_HEAD:agents/{name}.md"))
+
+
+def count_lines(upstream: Path, items: list[str]) -> tuple[list[tuple[str, int, int]], list[str]]:
+    """Per changed skill or agent: lines added and removed upstream. Second value: changes that lines cannot measure."""
+    changed, uncounted = [], []
+    for item in items:
+        name = item.removesuffix(".md")
+        added = removed = 0
+        diff = ["git", "diff", "--no-index", "--no-ext-diff", "--no-color"]
+        paths = ["--", f"old/{item}", f"new/{item}"]
+        for line in run(*diff, "--raw", "--numstat", *paths, cwd=upstream, ok=(0, 1)).splitlines():
+            if line.startswith(":"):
+                old_mode, new_mode = line[1:].split()[:2]
+                if "120000" in (old_mode, new_mode):
+                    uncounted.append(f"{name} has a symbolic link")
+                elif "000000" not in (old_mode, new_mode) and old_mode != new_mode:
+                    uncounted.append(f"{name} has a file mode change")
+                continue
+            plus, minus, _ = line.split("\t", 2)
+            if plus == "-":
+                uncounted.append(f"{name} has a binary file")
+            else:
+                added, removed = added + int(plus), removed + int(minus)
+        text = run(*diff, *paths, cwd=upstream, ok=(0, 1))
+        if any(len(line) > LINE_LIMIT + 1 and line[:1] in "+-" for line in text.splitlines()):
+            uncounted.append(f"{name} has a changed line over {LINE_LIMIT} characters")
+        if added or removed or text.strip():
+            changed.append((name, added, removed))
+    return changed, uncounted
+
+
+def doctor_gaps(env: dict) -> subprocess.CompletedProcess:
+    """Run `wk doctor` in a scratch project of the throwaway home: it compares what the sync installed with the lock files."""
+    scratch = Path(env["HOME"]) / "projects/scratch"
+    scratch.mkdir(parents=True)
+    run("git", "init", "-q", scratch, env=env)
+    run("git", "-C", scratch, "-c", "user.name=wk", "-c", "user.email=wk@localhost", "commit", "-q", "--allow-empty", "-m", "chore: start", env=env)
+    (scratch / ".workspace-kit.toml").write_text(
+        'slug = "scratch"\ntype = "code"\nvault = "knowledge-base"\n\n[vision]\nmin_commits = 20\nrefresh_days = 90\n\n[skip]\n'
+        + "".join(f'{check} = "a scratch project of wk pins-update has no capsule"\n' for check in SKIPPED_CHECKS))
+    return call(LIBEXEC / "wk-doctor", cwd=scratch, env=env)
+
+
+def conditions(clone: Path, work: Path, lines: int, uncounted: list[str]) -> list[tuple[str, bool, str]]:
+    """The three merge conditions as (what is checked, holds, detail). The sync writes the new lock files into the clone."""
+    env = throwaway_home(work / "home", clone)
+    failure = ""
+    for command in ("skills-sync", "agents-sync"):
+        result = call(sys.executable, LIBEXEC / f"wk-{command}", env=env)
+        if result.returncode != 0:
+            failure = f"`wk {command}` failed:\n{said(result)}"
+            break
+    if failure:
+        doctor = (False, "not run, because the sync failed")
+    else:
+        result = doctor_gaps(env)
+        doctor = (result.returncode == 0 and not said(result), said(result) or (f"exit code {result.returncode}" if result.returncode else ""))
+    return [
+        ("`wk skills-sync` and `wk agents-sync` succeed, so every patch still applies", not failure, failure),
+        ("`wk doctor` reports no gap for the new install", *doctor),
+        (f"upstream change under {LIMIT} lines (added plus removed)", lines < LIMIT and not uncounted,
+         f"{lines} lines" + (f"; lines cannot measure this: {', '.join(sorted(set(uncounted)))}" if uncounted else "")),
+    ]
+
+
+def fenced(text: str, language: str = "") -> str:
+    """The text in a code fence longer than any run of backticks inside it, so the text cannot close the fence."""
+    fence = "`" * max(3, 1 + max((len(run_) for run_ in re.findall(r"`+", text)), default=0))
+    return f"{fence}{language}\n{text.rstrip()}\n{fence}"
+
+
+def pr_body(moves: list, checks: list, changed: list, diff: str) -> str:
+    def source(label: str, url: str, old: str, new: str) -> str:
+        link = f"[{label}]({url}/compare/{old}...{new})" if url.startswith("https://") else label
+        return f"| {link} | `{old[:10]}` | `{new[:10]}` |"
+
+    def result(holds: bool, detail: str) -> str:
+        first_line = detail.splitlines()[0] if detail else ""
+        return ("pass" if holds else "**fail**") + (f": {first_line}" if first_line else "")
+
+    failed = [(what, detail) for what, holds, detail in checks if not holds]
+    added, removed = sum(a for _, a, _ in changed), sum(r for _, _, r in changed)
+    if len(diff) > BODY_DIFF_LIMIT:
+        diff = diff[:BODY_DIFF_LIMIT] + "\n(cut here; the links in the Summary show all of it)"
+    parts = [
+        "## Summary",
+        "Newer upstream versions of the pinned skills and agents, offered by `wk pins-update`.",
+        "| Source | From | To |\n|---|---|---|\n" + "\n".join(source(*move) for move in moves),
+        "## Evidence",
+        "| Merge condition | Result |\n|---|---|\n" + "\n".join(f"| {what} | {result(holds, detail)} |" for what, holds, detail in checks),
+        "**Verdict:** every condition holds, so the run merges this pull request itself." if not failed
+        else "**Verdict:** this pull request waits for the owner.",
+    ]
+    for what, detail in failed:
+        if "\n" in detail:
+            parts.append(f"Why \"{what}\" fails:\n\n{fenced(detail, 'text')}")
+    if not checks[0][1]:
+        parts.append(
+            "The sync failed, so the lock files in this pull request are not complete. Do not merge it. Instead:\n\n"
+            "1. Close this pull request.\n"
+            "2. On main, fix what the message above names. For a patch that no longer applies: change it to fit the new upstream text "
+            "(the diff below shows it), or delete it.\n"
+            "3. Wait for the next run. A changed patch makes it offer these versions again, with complete lock files.")
+    parts += [
+        "### What changed upstream",
+        f"{added + removed} lines ({added} added, {removed} removed) in the upstream text of the pinned skills and agents, before any patch of this repo.",
+        "| Skill or agent | Added | Removed |\n|---|---|---|\n" + "\n".join(f"| `{name}` | {a} | {r} |" for name, a, r in changed)
+        if changed else "No pinned skill or agent changed; the newer commits touch other files of the upstream repos.",
+    ]
+    if diff.strip():
+        parts.append(f"<details><summary>The upstream diff</summary>\n\n{fenced(diff, 'diff')}\n\n</details>")
+    parts += [
+        "## Merge Danger",
+        "**Door:** two-way\n**Blast Radius:** install",
+        ("After the merge nothing changes on a Mac until `git pull` in the kit; then `wk doctor` reports the older install and "
+         "`wk skills-sync` and `wk agents-sync` bring in these versions. To undo: `gh pr revert` on this pull request, then pull and sync again."),
+    ]
+    return "\n\n".join(parts) + "\n"
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="wk pins-update", description=__doc__)
+    parser.add_argument("--dry-run", action="store_true", help="print the pull request text and the verdict; push nothing")
+    args = parser.parse_args()
+
+    with tempfile.TemporaryDirectory(prefix="wk-pins-update-") as folder:
+        # Everything happens in a throwaway clone and throwaway home folders, so the installed kit stays as it is.
+        work = Path(folder).resolve()
+        clone = work / "kit"
+        run("git", "clone", "-q", run("git", "-C", KIT, "remote", "get-url", "origin").strip(), clone)
+        base = run("git", "-C", clone, "branch", "--show-current").strip()
+
+        skills_txt = (clone / "skills.txt").read_text()
+        agents_toml = (clone / "agents/agents.toml").read_text()
+        manifest = tomllib.loads(agents_toml)
+        agents_repo, agents_commit = manifest["source"]["repo"], manifest["source"]["commit"]
+        new_lines, moves = [], []
+        for line in skills_txt.splitlines():
+            if not line.strip():
+                new_lines.append(line)
+                continue
+            package_ref, *names = line.split()
+            package, _, commit = package_ref.partition("#")
+            if not re.fullmatch(r"[\w.-]+/[\w.-]+", package):
+                sys.exit(f"pins-update: '{package}' is not a package; write it as owner/repo#<commit> in skills.txt")
+            url = f"https://github.com/{package}"
+            latest = newest(url)
+            if latest != commit and (package, url, commit, latest) not in moves:
+                moves.append((package, url, commit, latest))
+            new_lines.append(" ".join([f"{package}#{latest}", *names]))
+        new_skills_txt = "\n".join(new_lines) + "\n"
+        new_agents_commit = newest(agents_repo)
+        if new_agents_commit != agents_commit:
+            moves.append((agents_repo.removeprefix("https://github.com/"), agents_repo, agents_commit, new_agents_commit))
+        if not moves:
+            print("pins-update: every pin is at the newest upstream commit; no pull request")
+            return
+        new_agents_toml = agents_toml.replace(agents_commit, new_agents_commit)
+        # The branch name stands for these versions with these patches: a changed patch makes a new offer.
+        patch_texts = b"".join(path.read_bytes() for path in sorted((clone / "patches").rglob("*.patch")))
+        branch = BRANCH_PREFIX + patches.sha256((new_skills_txt + new_agents_toml).encode() + patch_texts)[:10]
+
+        for pr in json.loads(run("gh", "pr", "list", "--state", "all", "--limit", "1000", "--json", "url,state,headRefName", cwd=clone)):
+            if pr["state"] == "OPEN" and pr["headRefName"].startswith(BRANCH_PREFIX):
+                print(f"pins-update: {pr['url']} still waits for you; no new pull request until it is merged or closed")
+                return
+            if pr["headRefName"] == branch:
+                print(f"pins-update: these versions were offered in {pr['url']}, which is {pr['state'].lower()}; no new pull request")
+                return
+        for label, _, old, new in moves:
+            print(f"pins-update: {label} {old[:10]} -> {new[:10]}")
+
+        upstream_skills(work, "old", skills_txt)
+        upstream_skills(work, "new", new_skills_txt)
+        upstream_agents(work, agents_repo, {"old": agents_commit, "new": new_agents_commit}, list(manifest["agents"]))
+        upstream = work / "upstream"
+        items = sorted(f"skills/{path.name}" for path in (upstream / "new/skills").iterdir()) + [f"agents/{name}.md" for name in manifest["agents"]]
+        changed, uncounted = count_lines(upstream, items)
+        lines = sum(added + removed for _, added, removed in changed)
+        diff = run("git", "diff", "--no-index", "--no-ext-diff", "--no-color", "--", "old", "new", cwd=upstream, ok=(0, 1))
+        if len(diff) > BODY_DIFF_LIMIT:
+            uncounted.append(f"the diff is over {BODY_DIFF_LIMIT} characters, too long to show in full in the pull request")
+
+        (clone / "skills.txt").write_text(new_skills_txt)
+        (clone / "agents/agents.toml").write_text(new_agents_toml)
+        checks = conditions(clone, work, lines, uncounted)
+        body = pr_body(moves, checks, changed, diff)
+        reasons = "; ".join(what + (f": {detail.splitlines()[0]}" if detail else "") for what, holds, detail in checks if not holds)
+        if args.dry_run:
+            print(body)
+            print("pins-update: dry run, nothing was pushed; " + (f"the pull request would wait for you: failed: {reasons}" if reasons else "the pull request would be merged"))
+            return
+
+        written = {line[3:] for line in run("git", "-C", clone, "status", "--porcelain", "--untracked-files=all").splitlines()}
+        if written - LOCK_FILES:
+            sys.exit(f"pins-update: the sync wrote files other than the pins and lock files ({', '.join(sorted(written - LOCK_FILES))}); nothing was pushed")
+        run("git", "-C", clone, "switch", "-q", "-c", branch)
+        run("git", "-C", clone, "add", "-A")
+        run("git", "-C", clone, "commit", "-q", "-m", "chore: move the pins to the newest upstream versions")
+        if run("git", "-C", clone, "ls-remote", "--heads", "origin", branch).strip():
+            # No pull request names this branch (checked above): an earlier run pushed it and then failed.
+            run("git", "-C", clone, "push", "-q", "origin", "--delete", branch)
+            print(f"pins-update: removed the branch {branch}, which an earlier run left without a pull request")
+        run("git", "-C", clone, "push", "-q", "origin", branch)
+        head = run("git", "-C", clone, "rev-parse", "HEAD").strip()
+        (work / "body.md").write_text(body)
+        url = run("gh", "pr", "create", "--base", base, "--head", branch, "--title", f"chore: pin update, {lines} upstream lines changed",
+                  "--body-file", work / "body.md", cwd=clone).strip().splitlines()[-1]
+        if reasons:
+            print(f"pins-update: {url} waits for you; failed: {reasons}")
+            return
+        merge = call("gh", "pr", "merge", url, "--squash", "--delete-branch", "--match-head-commit", head, cwd=clone)
+        if merge.returncode != 0:
+            print(f"pins-update: {url} waits for you; every condition holds, but the merge failed: {' '.join(said(merge).split())}")
+            return
+        print(f"pins-update: merged {url} ({lines} upstream lines changed); to undo it, run `gh pr revert {url}` and merge the pull request it opens")
+
+
+main()

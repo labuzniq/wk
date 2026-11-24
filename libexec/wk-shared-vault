@@ -145,15 +145,18 @@ if ! jq -e --arg vault "$vault" '.permissions.additionalDirectories // [] | inde
 fi
 
 # The doctor reads this stamp instead of asking Orca: it is written only once the automation is there.
+# It also names the vault the automation was made for, so one the owner removed is not created again.
 stamp="$state_dir/shared-vault-ready"
 name="Wiki lint: shared"
 if ! { repos=$(orca repo list --json) && automations=$(orca automations list --json); }; then
   echo "shared-vault: Orca did not answer, so the automation '$name' is not set up yet. Start Orca and run \`wk shared-vault\` again." >&2
-  exit 1
+  exit 75 # EX_TEMPFAIL: install.sh goes on, the doctor keeps the gap
 fi
 jq -e --arg vault "$vault" '.result.repos | any(.path == $vault)' <<<"$repos" >/dev/null \
   || { orca repo add --path "$vault" --json >/dev/null; echo "added $vault to Orca"; }
-if ! jq -e --arg name "$name" '.result.automations | any(.name == $name)' <<<"$automations" >/dev/null; then
+if ! jq -e --arg name "$name" '.result.automations | any(.name == $name)' <<<"$automations" >/dev/null && [ "$(cat "$stamp" 2>/dev/null)" = "$configured" ]; then
+  echo "kept automation '$name' removed (created before; delete $stamp to have it created again)"
+elif ! jq -e --arg name "$name" '.result.automations | any(.name == $name)' <<<"$automations" >/dev/null; then
   orca automations create --name "$name" --trigger "0 10 * * 6" --prompt "Run the wiki-lint skill, then stop." \
     --provider claude --workspace "path:$vault" --fresh-session --enabled --json >/dev/null
   echo "created automation '$name'"
