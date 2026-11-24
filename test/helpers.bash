@@ -29,6 +29,7 @@ setup_home() {
   # The installed kit: the real templates, and a lock file that matches one stand-in agent.
   mkdir -p "$HOME/kit/agents" "$HOME/.claude/agents/ecc" "$HOME/.claude/skills"
   ln -s "$kit/templates" "$HOME/kit/templates"
+  echo "@$HOME/kit/claude/CLAUDE.md" > "$HOME/.claude/CLAUDE.md"
   echo "stand-in agent" > "$HOME/.claude/agents/ecc/reviewer.md"
   jq -n --arg sha "$(shasum -a 256 "$HOME/.claude/agents/ecc/reviewer.md" | cut -d' ' -f1)" \
     '{agents: {reviewer: {installed_sha256: $sha}}}' > "$HOME/kit/agents/agents.lock"

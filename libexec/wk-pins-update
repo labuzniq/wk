@@ -30,9 +30,11 @@ KEPT = {"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TERM", "USER", "LOGNAME
         "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "NPX_STUB"}
 LOCK_FILES = {"skills.txt", "agents/agents.toml", "skills.lock", "agents/agents.lock"}
 os.environ["GIT_TERMINAL_PROMPT"] = "0"  # a run started by Orca has nobody to type a password
-# The doctor's checks of one project; the scratch project has no capsule, so only the checks of the install count.
-PROJECT_CHECKS = ["claude_md", "mise", "orca_repo", "orca_files", "orca_setup_hook", "vision", "vision_fresh",
-                  "matt_setup", "tracker", "automations", "vault_page", "proposals"]
+# The doctor's checks of one project and of the person's own instructions file. The scratch project has neither,
+# so only the checks of the pinned install count: skills_visible, skills, agents, patches.
+SKIPPED_CHECKS = ["claude_md", "mise", "orca_repo", "shared_values", "orca_files", "orca_setup_hook", "starter_checks",
+                  "vision", "vision_fresh", "matt_setup", "tracker", "automations", "cleanup_automation", "vault_page",
+                  "proposals", "instructions"]
 
 
 def call(*args: object, cwd: Path | None = None, env: dict | None = None) -> subprocess.CompletedProcess:
@@ -132,7 +134,7 @@ def doctor_gaps(env: dict) -> subprocess.CompletedProcess:
     run("git", "-C", scratch, "-c", "user.name=wk", "-c", "user.email=wk@localhost", "commit", "-q", "--allow-empty", "-m", "chore: start", env=env)
     (scratch / ".workspace-kit.toml").write_text(
         'slug = "scratch"\ntype = "code"\nvault = "knowledge-base"\n\n[vision]\nmin_commits = 20\nrefresh_days = 90\n\n[skip]\n'
-        + "".join(f'{check} = "a scratch project of wk pins-update has no capsule"\n' for check in PROJECT_CHECKS))
+        + "".join(f'{check} = "a scratch project of wk pins-update has no capsule"\n' for check in SKIPPED_CHECKS))
     return call(LIBEXEC / "wk-doctor", cwd=scratch, env=env)
 
 

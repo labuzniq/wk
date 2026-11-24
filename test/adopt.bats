@@ -27,8 +27,8 @@ snapshot() {
   [[ "$output" == *"created .workspace-kit.toml"* ]]
   is "$(head -1 docs/agents/issue-tracker.md)" "# stand-in issue-tracker-local"
   grep -qx 'slug = "demo"' .workspace-kit.toml
-  grep -qx 'orca_repo_id = "repo-1"' .workspace-kit.toml
-  is "$(jq -r '.[].name' "$ORCA_STUB/automations.json" | sort | paste -sd, -)" "Wiki ingest: demo,Wiki lint: demo"
+  is "$(cat "$state/repos/$(printf '%s' "$project" | shasum | cut -d' ' -f1)")" 'orca_repo_id = "repo-1"'
+  is "$(jq -r '.[].name' "$ORCA_STUB/automations.json" | sort | paste -sd, -)" "Wiki ingest: demo,Wiki lint: demo,Worktree cleanup: demo"
 }
 
 @test "a second run changes nothing" {
@@ -74,4 +74,85 @@ snapshot() {
   "$kit/libexec/wk-adopt"
   is "$(head -1 docs/agents/issue-tracker.md)" "# stand-in issue-tracker-github"
   grep -qx -- "repo set-base-ref --repo id:repo-1 --ref origin/main --json" "$ORCA_STUB/calls"
+}
+
+@test "a Python project gets the starter checks, wired into its lint task, and the run names them" {
+  echo '[project]' > pyproject.toml
+  run "$kit/libexec/wk-adopt"
+  [ "$status" -eq 0 ]
+  [ -f checks/starter/python.toml ] && [ -f checks/starter/python.txt ] && [ -f checks/README.md ]
+  [[ "$output" == *"created checks/starter/python.toml"* ]]
+  [[ "$output" == *"added starter checks for python: E722, BLE001, S110, T201, PGH003, PGH004"* ]]
+  is "$(grep -A1 '^\[tasks.lint\]' mise.toml | grep -c 'ruff check --config checks/starter/python.toml || { cat checks/starter/python.txt; exit 1; }')" 1
+  # first in the list: mise stops at the first command that fails, and the project's own linter may not be installed yet
+  grep -q '^run = \["mise x ruff@.*", "uv run ruff check"\]$' mise.toml
+  [[ "$output" != *"does not run the starter checks"* ]]
+}
+
+@test "a TypeScript project gets the starter checks in its lint task" {
+  echo '{}' > package.json
+  run "$kit/libexec/wk-adopt"
+  [[ "$output" == *"added starter checks for ts: noExplicitAny, "* ]]
+  is "$(grep -A1 '^\[tasks.lint\]' mise.toml | grep -c 'biome lint --config-path=checks/starter/ts.json || { cat checks/starter/ts.txt; exit 1; }')" 1
+}
+
+@test "a Swift project without a package file gets a lint task with the starter checks" {
+  new_repo .
+  mkdir App.xcodeproj
+  touch App.xcodeproj/project.pbxproj
+  git add App.xcodeproj
+  run "$kit/libexec/wk-adopt"
+  [[ "$output" == *"added starter checks for swift: force_unwrapping, "* ]]
+  is "$(grep -A1 '^\[tasks.lint\]' mise.toml | grep -c 'swiftlint lint --strict --quiet --config checks/starter/swift.yml || { cat checks/starter/swift.txt; exit 1; }')" 1
+}
+
+@test "a project gets starter checks for its own stacks only" {
+  echo '[project]' > pyproject.toml
+  "$kit/libexec/wk-adopt"
+  is "$(cd checks/starter && echo *)" "python.toml python.txt"
+}
+
+@test "a folder with no stack gets no checks folder" {
+  run "$kit/libexec/wk-adopt"
+  [ ! -e checks ]
+  [[ "$output" != *"starter checks"* ]]
+}
+
+@test "an existing lint config and a changed starter file are kept" {
+  printf '[project]\n\n[tool.ruff.lint]\nselect = ["F"]\n' > pyproject.toml
+  mkdir -p checks/starter
+  echo '# the owner removed every rule' > checks/starter/python.toml
+  before=$(shasum pyproject.toml checks/starter/python.toml)
+  run "$kit/libexec/wk-adopt"
+  is "$(shasum pyproject.toml checks/starter/python.toml)" "$before"
+  [[ "$output" == *"kept    checks/starter/python.toml"* ]]
+  [[ "$output" == *"created checks/starter/python.txt"* ]]
+}
+
+@test "a kept mise.toml is not changed; the run prints the command to add to its lint task" {
+  echo '[project]' > pyproject.toml
+  printf '[tasks.setup]\nrun = "uv sync"\n\n[tasks.lint]\nrun = ["uv run ruff check"]\n' > mise.toml
+  before=$(cat mise.toml)
+  run "$kit/libexec/wk-adopt"
+  is "$(cat mise.toml)" "$before"
+  [ -f checks/starter/python.toml ]
+  [[ "$output" == *"kept    mise.toml: its lint task does not run the starter checks for python; add this command to the run list of [tasks.lint]: mise x ruff@"*" -- ruff check --config checks/starter/python.toml || { cat checks/starter/python.txt; exit 1; }"* ]]
+}
+
+@test "every starter check with a message is switched on in its config" {
+  for messages in "$kit"/templates/checks/starter/*.txt; do
+    ids=$(sed -n 's/^  \([^ ]*\) .*/\1/p' "$messages")
+    [ -n "$ids" ] || { echo "no check in $messages"; return 1; }
+    for id in $ids; do
+      for config in "${messages%.txt}".*; do [ "$config" = "$messages" ] || cat "$config"; done | grep -q -- "$id" || { echo "$id has a message in $messages but is in no config"; return 1; }
+    done
+  done
+}
+
+@test "a stack the kept manifest names and a stack found later both get starter checks" {
+  "$kit/libexec/wk-adopt"
+  sed -i '' 's/^stack = .*/stack = ["swift"]/' .workspace-kit.toml
+  echo '[project]' > pyproject.toml
+  run "$kit/libexec/wk-adopt"
+  is "$(cd checks/starter && echo *)" "python.toml python.txt swift.txt swift.yml"
 }

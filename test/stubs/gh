@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stand-in for gh in tests. Logs each call to $GH_STUB/calls. Pull request 7 lives in $GH_STUB/pr.json; no such file means no pull request.
+# Stand-in for gh in tests. Logs each call to $GH_STUB/calls and answers from the files in $GH_STUB. Pull request 7 lives in $GH_STUB/pr.json; no such file means no pull request.
 # `gh pr create` opens it, or fails when $GH_STUB/fail-create exists. The repo owner and the signed-in user are "someone",
 # unless $GH_STUB/owner or $GH_STUB/me say otherwise.
 # The pull requests of `wk pins-update` (`pr list --state all`, `pr create --base`, `pr merge`) live in $GH_STUB/prs.json;
@@ -7,6 +7,12 @@
 set -euo pipefail
 printf '%s\n' "$*" >> "$GH_STUB/calls"
 url=https://github.com/someone/legacy/pull/7
+
+unknown() { echo "gh stand-in: no answer for '$*'; add it to test/stubs/gh" >&2; exit 64; }
+pr_update() {
+  jq "$@" "$GH_STUB/pr.json" > "$GH_STUB/pr.json.new"
+  mv "$GH_STUB/pr.json.new" "$GH_STUB/pr.json"
+}
 
 case "$1 ${2:-} ${3:-}" in
   "pr list --state")
@@ -28,10 +34,12 @@ esac
 
 case "$1 ${2:-}" in
   "pr view")
-    case "${4:-} ${5:-} ${6:-}" in
-      "--json state,reviewDecision --jq" | "--json state --jq") jq -r "$7" "$GH_STUB/pr.json" ;;
-      *) echo "gh stand-in: unexpected call '$*'; teach test/stubs/gh the new form" >&2; exit 64 ;;
-    esac
+    all="$*"
+    shift 2
+    [ "${1:-}" = --json ] || shift
+    [ "${1:-}" = --json ] || { echo "gh stand-in: unexpected call '$all'; teach test/stubs/gh the new form" >&2; exit 64; }
+    [ -f "$GH_STUB/pr.json" ] || { echo "no pull requests found for this branch" >&2; exit 1; }
+    if [ "${3:-}" = --jq ]; then jq -r "$4" "$GH_STUB/pr.json"; else jq -c . "$GH_STUB/pr.json"; fi
     ;;
   "pr list")
     [ "${3:-} ${5:-} ${6:-} ${7:-} ${8:-} ${9:-}" = "--head --state open --json url --jq" ] || { echo "gh stand-in: unexpected call '$*'" >&2; exit 64; }
@@ -42,14 +50,48 @@ case "$1 ${2:-}" in
     echo '{"state": "OPEN", "reviewDecision": ""}' > "$GH_STUB/pr.json"
     echo "$url"
     ;;
+  "pr edit")
+    [ "${4:-}" = --body-file ] || unknown "$@"
+    pr_update --rawfile body "$5" '.body = $body'
+    ;;
+  "pr merge")
+    if [ $# -eq 7 ]; then
+      # The form of `wk pins-update`: pr merge <url> --squash --delete-branch --match-head-commit <sha>.
+      [ "${*:4:3}" = "--squash --delete-branch --match-head-commit" ] || unknown "$@"
+      [ ! -f "$GH_STUB/merge-refused" ] || { echo "the base branch policy prohibits the merge" >&2; exit 1; }
+      echo "$7" > "$GH_STUB/merged-head"
+      jq -c --arg url "$3" 'map(if .url == $url then .state = "MERGED" else . end)' "$GH_STUB/prs.json" > "$GH_STUB/prs.json.new"
+      mv "$GH_STUB/prs.json.new" "$GH_STUB/prs.json"
+      exit
+    fi
+    [ "${4:-} ${5:-}" = "--squash --match-head-commit" ] && [ $# -eq 6 ] || unknown "$@"
+    if [ -f "$GH_STUB/merge-error" ]; then cat "$GH_STUB/merge-error" >&2; exit 1; fi
+    [ "$6" = "$(jq -r .headRefOid "$GH_STUB/pr.json")" ] || { echo "head commit does not match" >&2; exit 1; }
+    [ -f "$GH_STUB/merge-queued" ] || pr_update '.state = "MERGED" | .mergeCommit = {oid: "abc1234def5678"}'
+    ;;
   "repo view") cat "$GH_STUB/owner" 2>/dev/null || echo someone ;;
   "api user") cat "$GH_STUB/me" 2>/dev/null || echo someone ;;
-  "pr merge")
-    [ "${*:4:3} $#" = "--squash --delete-branch --match-head-commit 7" ] || { echo "gh stand-in: unexpected call '$*'; teach test/stubs/gh the new form" >&2; exit 64; }
-    [ ! -f "$GH_STUB/merge-refused" ] || { echo "the base branch policy prohibits the merge" >&2; exit 1; }
-    echo "$7" > "$GH_STUB/merged-head"
-    jq -c --arg url "$3" 'map(if .url == $url then .state = "MERGED" else . end)' "$GH_STUB/prs.json" > "$GH_STUB/prs.json.new"
-    mv "$GH_STUB/prs.json.new" "$GH_STUB/prs.json"
+  api\ *)
+    shift
+    filter="." endpoint=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        -H) shift 2 ;;
+        --jq) filter="$2"; shift 2 ;;
+        --paginate) shift ;;
+        *) endpoint="$1"; shift ;;
+      esac
+    done
+    case "$endpoint" in
+      repos/*/pulls/*/files) jq -r "$filter" "$GH_STUB/files.json" ;;
+      repos/*/contents/.workspace-kit.toml\?ref=*)
+        if [ -f "$GH_STUB/manifest-error" ]; then cat "$GH_STUB/manifest-error" >&2; exit 1; fi
+        [ -f "$GH_STUB/manifest.${endpoint##*ref=}" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
+        cat "$GH_STUB/manifest.${endpoint##*ref=}"
+        ;;
+      repos/*/*) jq -n '{default_branch: "main"}' | jq -r "$filter" ;;
+      *) unknown api "$endpoint" ;;
+    esac
     ;;
-  *) echo "gh stand-in: no answer for '$*'; add it to test/stubs/gh" >&2; exit 64 ;;
+  *) unknown "$@" ;;
 esac

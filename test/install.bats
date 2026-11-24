@@ -1,37 +1,120 @@
 #!/usr/bin/env bats
-# `install.sh` in a throwaway home: the scheduled pin update is created in Orca, once.
+# `install.sh` in a throwaway HOME: the config, the global instructions, the settings and the weekly pin update in Orca.
+# Skill and agent syncs are stand-ins.
 
-# shellcheck disable=SC2154 # kit, state and the helpers come from helpers.bash
+# shellcheck disable=SC2154 # kit and the helpers come from helpers.bash
 load helpers
 
+# The installer finds the kit by its own place, so the test runs a copy whose `wk` only logs its calls.
 setup() {
   setup_home
-  echo '{}' > "$HOME/.claude/settings.json"
-  : > "$HOME/kit/skills.txt"
-  new_repo "$HOME/upstream"
-  mkdir "$HOME/upstream/agents"
-  printf -- '---\nname: reviewer\n---\nReview the code.\n' > "$HOME/upstream/agents/reviewer.md"
-  git -C "$HOME/upstream" add -A
-  git -C "$HOME/upstream" commit -q -m "feat: reviewer"
-  printf '[source]\nrepo = "%s"\ncommit = "%s"\n\n[agents]\nreviewer = { skills = [] }\n' \
-    "$HOME/upstream" "$(git -C "$HOME/upstream" rev-parse HEAD)" > "$HOME/kit/agents/agents.toml"
+  rm -r "$HOME/.claude" "$HOME/.config/workspace-kit"
+  copy="$HOME/kit copy"
+  mkdir -p "$copy/bin" "$copy/docs"
+  cp -R "$kit/install.sh" "$kit/claude" "$kit/skills" "$kit/skills.txt" "$kit/templates" "$copy/"
+  cp "$kit/docs/orca-settings.md" "$copy/docs/"
+  printf '#!/usr/bin/env bash\necho "$*" >> "$HOME/wk-calls"\n' > "$copy/bin/wk"
+  chmod +x "$copy/bin/wk"
+  mine="$HOME/.claude/CLAUDE.md"
+  import="@$HOME/kit\\ copy/claude/CLAUDE.md"
+}
+
+install() { run "$copy/install.sh" "$HOME/projects"; }
+
+# Everything the installer may write, with its content; links show where they point.
+snapshot() {
+  find "$HOME/.claude" "$HOME/.config" "$HOME/.local/bin" -type f -exec shasum {} + | sort
+  find "$HOME/.claude" "$HOME/.local/bin" -type l -exec ls -l {} + | awk '{print $(NF-2), $NF}' | sort
+}
+
+changes() { grep -E '^(wrote|moved|added|merged|linked|backed up) ' <<<"$output" || true; }
+
+@test "a fresh install writes the person's own instructions file, which imports the shared one" {
+  install
+  [ "$status" -eq 0 ]
+  [ ! -L "$mine" ]
+  is "$(head -1 "$mine")" "$import"
+  is "$(grep -l '## Language' "$mine" "$copy/claude/CLAUDE.md")" ""
+  [[ "$output" == *"wrote $mine"* ]]
+  is "$(jq -r '.hooks.Stop[0].hooks[0].command' "$HOME/.claude/settings.json")" "$copy/hooks/stop.sh"
+  grep -qx "kit = \"$copy\"" "$HOME/.config/workspace-kit/config.toml"
+  is "$(cat "$HOME/wk-calls")" $'skills-sync\nagents-sync'
+  [ ! -e "$HOME/.claude/backup" ]
+}
+
+@test "a second run changes nothing and says so by printing no change" {
+  install
+  echo "- my own rule" >> "$mine"
+  before=$(snapshot)
+  install
+  [ "$status" -eq 0 ]
+  is "$(snapshot)" "$before"
+  is "$(changes)" ""
+}
+
+@test "an install of the old layout moves to the new one, keeps the personal lines and makes a backup" {
+  mkdir -p "$HOME/.claude"
+  ln -s "$copy/claude/CLAUDE.md" "$mine"
+  install
+  [ "$status" -eq 0 ]
+  [ ! -L "$mine" ]
+  is "$(head -1 "$mine")" "$import"
+  grep -q '^- Use simple English' "$mine"
+  [[ "$output" == *"moved $mine to the new layout"* ]]
+  is "$(readlink "$HOME"/.claude/backup/*/CLAUDE.md)" "$copy/claude/CLAUDE.md"
+  before=$(snapshot)
+  install
+  is "$(snapshot)" "$before"
+}
+
+@test "instructions the person wrote themselves are kept, with the import added and a backup" {
+  mkdir -p "$HOME/.claude"
+  printf '# Mine\n- my own rule\n' > "$mine"
+  install
+  [ "$status" -eq 0 ]
+  is "$(cat "$mine")" "$import"$'\n\n# Mine\n- my own rule'
+  is "$(cat "$HOME"/.claude/backup/*/CLAUDE.md)" $'# Mine\n- my own rule'
+  [[ "$output" == *"your text is kept"* ]]
+}
+
+@test "instructions that are a link into the person's own files stay a link, and the backup holds the old text" {
+  mkdir -p "$HOME/.claude" "$HOME/dotfiles"
+  echo "- my own rule" > "$HOME/dotfiles/claude.md"
+  ln -s ../dotfiles/claude.md "$mine"
+  install
+  [ "$status" -eq 0 ]
+  is "$(readlink "$mine")" ../dotfiles/claude.md
+  is "$(cat "$HOME/dotfiles/claude.md")" "$import"$'\n\n- my own rule'
+  [ ! -L "$(echo "$HOME"/.claude/backup/*/CLAUDE.md)" ]
+  is "$(cat "$HOME"/.claude/backup/*/CLAUDE.md)" "- my own rule"
+}
+
+@test "the doctor reports an install of the old layout, and the installer fixes it" {
+  install
+  adopted_project
+  ln -sf "$copy/claude/CLAUDE.md" "$mine"
+  run "$kit/bin/wk" doctor
+  [[ "$output" == *"instructions: $mine does not import"* ]]
+  install
+  run "$kit/bin/wk" doctor
+  [[ "$output" != *instructions:* ]]
 }
 
 @test "the installer creates the weekly pin update automation in the kit's own workspace" {
-  run "$kit/install.sh"
+  install
   [ "$status" -eq 0 ]
   is "$(jq -r '.[].name' "$ORCA_STUB/automations.json")" "Pin update"
   [[ "$output" == *"created automation 'Pin update'"* ]]
   created=$(grep "^automations create" "$ORCA_STUB/calls")
   [[ "$created" == *"--trigger weekly --day 1 --time 08:00"* ]]
   [[ "$created" == *'Run `wk pins-update`.'* ]]
-  [[ "$created" == *"--provider claude --workspace path:$kit --fresh-session --enabled"* ]]
-  is "$(jq -r '.[].path' "$ORCA_STUB/repos.json")" "$kit"
+  [[ "$created" == *"--provider claude --workspace path:$copy --fresh-session --enabled"* ]]
+  is "$(jq -r '.[].path' "$ORCA_STUB/repos.json")" "$copy"
 }
 
 @test "a second install creates no second automation" {
-  "$kit/install.sh"
-  run "$kit/install.sh"
+  install
+  install
   [ "$status" -eq 0 ]
   is "$(jq length "$ORCA_STUB/automations.json")" 1
   is "$(jq length "$ORCA_STUB/repos.json")" 1
@@ -40,16 +123,16 @@ setup() {
 
 @test "an automation that is already in Orca is kept and named" {
   echo '[{"name": "Pin update"}]' > "$ORCA_STUB/automations.json"
-  run "$kit/install.sh"
+  install
   [ "$status" -eq 0 ]
   [[ "$output" == *"kept automation 'Pin update'"* ]]
   is "$(jq length "$ORCA_STUB/automations.json")" 1
 }
 
 @test "an automation the owner removed is not created again" {
-  "$kit/install.sh"
+  install
   echo '[]' > "$ORCA_STUB/automations.json"
-  run "$kit/install.sh"
+  install
   [ "$status" -eq 0 ]
   is "$(jq length "$ORCA_STUB/automations.json")" 0
   [[ "$output" == *"kept automation 'Pin update' (created before; delete $HOME/.local/state/workspace-kit/pin-update-automation"* ]]
@@ -57,7 +140,7 @@ setup() {
 
 @test "when Orca does not answer, the install goes on and says the automation is not created" {
   touch "$ORCA_STUB/down"
-  run "$kit/install.sh"
+  install
   [ "$status" -eq 0 ]
   [[ "$output" == *"Orca gave no list of automations, so 'Pin update' is not created; start Orca and run install.sh again"* ]]
   [ -L "$HOME/.local/bin/wk" ]
