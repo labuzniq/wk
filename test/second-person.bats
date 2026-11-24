@@ -12,7 +12,7 @@ setup() {
 # second_person: the same repo as a fresh clone on a Mac whose Orca and kit state know nothing about it.
 second_person() {
   git clone -q "$project" "$HOME/projects/clone"
-  rm -r "$state"
+  installed_only
   echo '[{"id": "another-repo", "path": "/somewhere/else"}]' > "$ORCA_STUB/repos.json"
   echo '[]' > "$ORCA_STUB/automations.json"
   cd "$HOME/projects/clone" || return 1
@@ -79,7 +79,7 @@ old_capsule() {
 
 @test "in a worktree wk adopt sets up the person and leaves the old capsule to the primary checkout" {
   old_capsule
-  rm -r "$state"
+  installed_only
   git worktree add -q "$HOME/projects/ticket" -b ticket
   cd "$HOME/projects/ticket" || return 1
   is "$("$kit/bin/wk" doctor | grep -v '^vision:' | cut -d: -f1 | paste -sd' ' -)" "orca_repo automations"

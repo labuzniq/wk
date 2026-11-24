@@ -70,6 +70,6 @@ Specialists by what changed:
 - Cleanup after implementation, when I ask → code-simplifier.
 
 ## Knowledge base
-- Each project has its own vault; the session-start context names its path. Before non-trivial work, read the vault's `wiki/index.md` and `wiki/overview.md`.
+- Each project has its own vault, and one shared vault holds the lessons about Orca, the agents and the kit; the session-start context names both paths. Before non-trivial work, read the project vault's `wiki/index.md` and `wiki/overview.md`, and the shared vault's `wiki/learnings.md`.
 - When I say "note this" or "remember this", append a dated note to the vault's `raw/inbox/`.
 - Session capture is automatic. End sessions without a closing command.

@@ -292,3 +292,18 @@ Claude Code 2.1.311. The list of rules, and which hook checks which, is in `docs
 - A branch that a run pushed without opening its pull request (for example, `gh` was logged out) is deleted and pushed again by the next run.
 - The automation is created once. A marker, `~/.local/state/workspace-kit/pin-update-automation`, keeps the installer from creating it again after the owner removes it. When Orca does not answer, the installer says so and goes on without it.
 - git runs with `GIT_TERMINAL_PROMPT=0`, so a source repo that asks for a password fails the run instead of waiting for an answer nobody gives.
+
+## Shared vault (2026-11-23)
+
+- confirmed: `wk shared-vault` in a throwaway home creates the vault as its own git repo, with one commit, and a second run changes nothing. `install.sh` was run in a throwaway home with stand-ins for `orca` and `npx` (`test/install.bats`); it was not run against the real home.
+- confirmed: a `pre-commit` hook in the vault stops a commit when `wk shared-vault check` finds a project's name or a home path. With a global `core.hooksPath`, git would skip the vault's own hook; the kit then sets `core.hooksPath` to `.git/hooks` inside the vault. Tested with a global setting in the throwaway home.
+- confirmed: BSD `grep -rniwF` matches a project's name as a whole word, in any letter case. `cp -Rn` on this macOS exits 1 when it skips a file that is there, so its exit code is not used.
+- confirmed: `;;&` in a `case` is not in bash 3.2; the stand-ins stay without it.
+- docs: `permissions.additionalDirectories` in the user's `~/.claude/settings.json` gives every session access to a folder (check V12 covers the key). **open**: not tried in a real session that the shared vault can be written without a permission question; it needs the real home. A session that was already open when the entry was added does not have it.
+- open: the automation `Wiki lint: shared` is created the way `wk adopt` creates a project's (`orca repo add --path`, then `--workspace path:<vault>`), tested only against the stand-in. No real Orca automation was created. Check V10 (do automations fire while Orca is closed) holds for it too.
+- open: whether `orca automations edit` can move an automation to another folder. The kit does not try: after a change of `shared_vault` it names the automation to remove.
+- The doctor does not ask Orca (hooks stay fast). `wk shared-vault` writes `~/.local/state/workspace-kit/shared-vault-ready` once the automation is there, and the doctor reads that file.
+- This replaces the row "0.2: one vault path" in part: the global config now has a `shared_vault` key and the shared vault is in the global `additionalDirectories`. A project's vault is still one per project, inside its repo.
+- The check knows a project by its capsule (`.workspace-kit.toml`, up to three levels under the projects folder: its folder name and its slug) and by its session queue folder. A folder that only groups projects is not a name. Customers, people, repo addresses and code are not something the check can see; the skill text and the vault's schema carry that rule.
+- open: every project's ingest runs at 07:30 and may write the shared vault in the same minutes. The skill keeps that step short (new source files first, wiki pages and the commit in one go at the end); two runs have not been tried side by side.
+- Found on the way: on bash 3.2 a failing `[[ … ]]` in the middle of a bats test does not fail the test. The new tests use `has` and `lacks` from `test/helpers.bash`; the older tests still hold such lines.

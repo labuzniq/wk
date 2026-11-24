@@ -30,11 +30,11 @@ KEPT = {"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TERM", "USER", "LOGNAME
         "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "NPX_STUB"}
 LOCK_FILES = {"skills.txt", "agents/agents.toml", "skills.lock", "agents/agents.lock"}
 os.environ["GIT_TERMINAL_PROMPT"] = "0"  # a run started by Orca has nobody to type a password
-# The doctor's checks of one project and of the person's own instructions file. The scratch project has neither,
-# so only the checks of the pinned install count: skills_visible, skills, agents, patches.
+# The doctor's checks of one project, of the person's own instructions file and of their shared vault. The throwaway home
+# has none of them, so only the checks of the pinned install count: skills_visible, skills, agents, patches.
 SKIPPED_CHECKS = ["claude_md", "mise", "orca_repo", "shared_values", "orca_files", "orca_setup_hook", "starter_checks",
                   "vision", "vision_fresh", "matt_setup", "tracker", "automations", "cleanup_automation", "vault_page",
-                  "proposals", "instructions"]
+                  "proposals", "instructions", "shared_vault"]
 
 
 def call(*args: object, cwd: Path | None = None, env: dict | None = None) -> subprocess.CompletedProcess:

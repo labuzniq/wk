@@ -67,6 +67,8 @@ if [ "$merged" != "$current" ]; then
   printf '%s\n' "$merged" > "$claude_dir/settings.json.new"
   mv "$claude_dir/settings.json.new" "$claude_dir/settings.json"
   echo "merged settings fragment into $claude_dir/settings.json"
+  # The file as it was before this run is in the backup, or there was none: `wk shared-vault` needs no second copy.
+  export WK_SETTINGS_SAVED=1
 fi
 
 mkdir -p "$claude_dir/skills"
@@ -116,4 +118,10 @@ else
   touch "$marker"
 fi
 
+# Last, so that a closed Orca leaves everything above installed.
+shared_vault=0
+"$kit/bin/wk" shared-vault || shared_vault=$?
+[ "$shared_vault" -ne 75 ] || shared_vault=0 # Orca did not answer; it said so, and the doctor keeps the gap
+
 cat "$kit/docs/orca-settings.md"
+exit "$shared_vault"

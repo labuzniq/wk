@@ -10,6 +10,7 @@ One repeatable setup for every project, built around [Orca](https://orca.dev) an
 - **Review gate.** Before a pull request the agent first gathers proof that the change works (test output, a run of the app, a screenshot) and puts it in the pull request; then the review agents run. Eleven review and build-fix agents from [ECC](https://github.com/affaan-m/ECC), pinned to one commit, with skills preloaded.
 - **Corrections become checks.** Wiki ingest keeps one record per correction you make. Below three sessions a proposal waits for your yes or no. At three, the agent writes a check that fails on the old mistake, commits it alone and tells you how to revert it.
 - **Session capture.** Finished sessions are queued and turned into a per-project wiki (the [LLM wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)) by a daily Orca automation.
+- **One shared vault.** Lessons that hold in every project (about Orca, the agents and the kit) go to one vault outside any repo. The same daily automation sorts them there, without project names; a weekly automation lints it.
 
 ## Requirements
 
@@ -50,6 +51,7 @@ Then do the three manual Orca settings in [`docs/orca-settings.md`](docs/orca-se
 | `wk pins-update [--dry-run]` | Offer newer upstream versions of the pinned skills and agents as a pull request |
 | `wk transcript <file>` | Print what was said in a Claude Code transcript |
 | `wk corrections` | Count the sessions each correction was seen in; at three it is due to become a check |
+| `wk shared-vault [path\|check]` | Create the shared vault or keep the one that is there; print its path; list project names and home paths in it |
 
 ## Checking the kit
 
@@ -70,7 +72,7 @@ agents/          which ECC agents, the pinned commit, the lock file
 skills.txt       which third-party skills and their pinned commits; skills.lock is the lock file
 patches/         recorded patches for third-party skills and agents
 skills/          project-setup, wiki-ingest, wiki-lint
-templates/       project capsule, starter checks, vault skeleton, Orca workspace rules for the tracker doc
+templates/       project capsule, starter checks, vault skeleton, shared vault schema, Orca workspace rules for the tracker doc
 test/            `test/run`, the tests, and stand-ins for orca and gh
 docs/            verified facts, the manual Orca checklist, and which rule is a check (rules.md)
 ```
@@ -112,6 +114,7 @@ A pull request never switches this on for itself: the flag is read from GitHub's
 - If Orca is not running, Claude Code cannot create worktrees: the kit routes them through Orca on purpose and has no fallback.
 - A worktree is removed without asking only by the daily `Worktree cleanup: <project>` automation: its branch must be merged, its card completed for 14 days, and it must hold no uncommitted or untracked files. The branch stays. The 14 days count from the first run that saw the card completed, so a run with `--dry-run` also notes that time. One exception: a worktree Claude Code made for a subagent is removed with its branch when the subagent ends and left nothing in it.
 - The wiki automation commits changes under `knowledge-base/` onto the branch the primary checkout is on, and does not push.
+- The shared vault is its own git repo at `~/.local/share/workspace-kit/shared-vault`; `shared_vault` in `~/.config/workspace-kit/config.toml` names another place. The installer creates it once and adds it to `permissions.additionalDirectories` in `~/.claude/settings.json`, so every session can read and write it. Its automations commit inside it and do not push. Every commit there runs `wk shared-vault check`, which fails on the name of a project (a folder with a capsule up to three levels under your projects folder, or a project with a session queue) and on a path written out in your home folder. When a tool has the same name as one of your projects, add that name as a line to `.allowed-words` in the vault. After you change `shared_vault`, remove the automation `Wiki lint: shared` in Orca, then run `wk shared-vault`. When you remove that automation and keep the vault, it is not created again; delete `~/.local/state/workspace-kit/shared-vault-ready` to have it back.
 - Third-party skills and agents are installed from their own repos, each pinned to one commit: skills in `skills.txt` (`owner/repo#<commit>`), agents in `agents/agents.toml`. This repo holds none of their text.
 - When a skill or an agent does not fit this setup, it carries a recorded patch: `patches/skills/<name>.patch` or `patches/agents/<name>.patch`, a unified diff with `a/` and `b/` path prefixes (for a skill, paths inside its folder; for an agent, `<name>.md`). `wk skills-sync` and `wk agents-sync` apply it after install. `skills.lock` and `agents/agents.lock` record the checksum before and after, and `wk doctor` reports an install that differs. A patch that no longer applies stops the sync and names the skill or agent. A skill you edited by hand is moved to `~/.claude/backup/` before the pinned one replaces it.
 - Pins move by a weekly Orca automation, "Pin update", which the installer creates once (Monday 08:00). It runs `wk pins-update`: when an upstream repo has a newer commit, the run opens a pull request with the new pins and lock files, and the pull request shows what changed upstream. The run merges it itself when three conditions hold, all checked by code: `wk skills-sync` and `wk agents-sync` succeed (so every patch still applies), `wk doctor` reports no gap for the new install, and the upstream text of the pinned skills and agents changed by fewer than 50 lines (added plus removed). A change that lines cannot measure also waits: a binary file, a symbolic link, a file mode change, or a changed line over 1,000 characters. Otherwise the pull request waits for you, and no second one is opened while it waits. A closed pull request is a "no" for those versions with those patches; a changed patch makes a new offer. The run works in a throwaway clone and throwaway home folders, so nothing on your Mac changes until you `git pull` the kit; after that `wk doctor` reports the older install and the two sync commands bring in the new versions. `wk pins-update --dry-run` prints the pull request text and pushes nothing. To undo a merge: `gh pr revert <url>`. To stop the runs: `orca automations remove <id>`; the installer does not create the automation again until you delete `~/.local/state/workspace-kit/pin-update-automation`.

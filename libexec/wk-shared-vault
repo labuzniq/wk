@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+# The shared vault holds lessons across projects. No argument: create it once, keep an existing one. `path`: print where it is. `check`: list private details in it.
+set -euo pipefail
+kit="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../lib/config.sh
+. "$kit/lib/config.sh"
+state_dir="$HOME/.local/state/workspace-kit"
+
+vault=$(wk_config shared_vault 2>/dev/null || true)
+case "$vault" in
+  "" | /*) ;;
+  *) echo "shared-vault: shared_vault in $WK_CONFIG is '$vault'; write it as a full path that starts with /" >&2; exit 1 ;;
+esac
+
+# project_names: the slug and the folder name of every adopted project under the projects folder, and every slug with a session queue.
+project_names() {
+  local manifest queue
+  find "$1" -maxdepth 3 -name .workspace-kit.toml 2>/dev/null | while IFS= read -r manifest; do
+    basename "$(dirname "$manifest")"
+    sed -n 's/^slug = "\(.*\)"$/\1/p' "$manifest"
+  done
+  for queue in "$state_dir/sessions"/*/queue; do
+    [ ! -d "$queue" ] || basename "$(dirname "$queue")"
+  done
+}
+
+# Prints one line per private detail: a project's name, or a path that names the home folder.
+check() {
+  local projects_root words found=0 word hits hit
+  cd "$vault"
+  projects_root=$(wk_config projects_root)
+  words=$(project_names "$projects_root" | sort -u | grep -vixF -e "$(basename "$kit")" || true)
+  [ ! -f .allowed-words ] || words=$(printf '%s\n' "$words" | grep -vixFf .allowed-words || true)
+  while IFS= read -r word; do
+    [ -n "$word" ] || continue
+    hits=$(grep -rniwF --exclude-dir=.git --exclude=.allowed-words -e "$word" . | cut -d: -f1,2 || true)
+    [ -n "$hits" ] || continue
+    found=1
+    while IFS= read -r hit; do printf "%s: names the project '%s'\n" "${hit#./}" "$word"; done <<<"$hits"
+  done <<<"$words"
+  hits=$(grep -rnF --exclude-dir=.git -e "$HOME" -e "$projects_root" -e "~${projects_root#"$HOME"}/" . | cut -d: -f1,2 || true)
+  if [ -n "$hits" ]; then
+    found=1
+    while IFS= read -r hit; do printf '%s: holds a path in the home folder\n' "${hit#./}"; done <<<"$hits"
+  fi
+  [ "$found" -eq 0 ] || {
+    echo "shared-vault: the lines above hold a project's private details, and the shared vault is read in every project. Reword each line so it holds for any project (\"a project\", \`~/.claude/…\` for a path). A lesson that needs the word, because a tool has the same name as a project, goes to the project's vault instead; the owner can allow the word with a line in $vault/.allowed-words." >&2
+    return 1
+  }
+}
+
+case "${1:-}" in
+  path | check)
+    [ -n "$vault" ] && [ -d "$vault" ] || { echo "shared-vault: there is no shared vault yet; run \`wk shared-vault\`" >&2; exit 1; }
+    vault=$(cd "$vault" && pwd -P)
+    if [ "$1" = path ]; then echo "$vault"; else check; fi
+    exit
+    ;;
+  "") ;;
+  *) echo "usage: wk shared-vault [path|check]" >&2; exit 2 ;;
+esac
+
+if [ -z "$vault" ]; then
+  vault="$HOME/.local/share/workspace-kit/shared-vault"
+  [ -z "$(tail -c 1 "$WK_CONFIG")" ] || echo >> "$WK_CONFIG"
+  printf 'shared_vault = "%s"\n' "$vault" >> "$WK_CONFIG"
+  echo "added shared_vault to $WK_CONFIG"
+fi
+configured="$vault"
+
+outside_any_repo() {
+  ! git -C "$1" rev-parse --show-toplevel >/dev/null 2>&1 \
+    || { echo "shared-vault: $vault is inside the git repo $(git -C "$1" rev-parse --show-toplevel); the shared vault lives outside any repo. Set shared_vault in $WK_CONFIG to another folder and run \`wk shared-vault\` again." >&2; exit 1; }
+}
+
+# skeleton: adds the vault's files that are missing; a file that is there stays as it is.
+skeleton() {
+  cp -Rn "$kit/templates/shared-vault/." "$vault/" 2>/dev/null || true
+  cp -Rn "$kit/templates/vault/." "$vault/" 2>/dev/null || true
+  rm -f "$vault/wiki/_proposals/.gitkeep"
+  rmdir "$vault/wiki/_proposals" 2>/dev/null || true
+  { grep -rl "__DATE__" "$vault/wiki" || true; } | while IFS= read -r page; do sed -i '' "s/__DATE__/$(date +%Y-%m-%d)/" "$page"; done
+  [ -f "$vault/CLAUDE.md" ] || { echo "shared-vault: could not copy the vault skeleton into $vault; check that the folder can be written" >&2; exit 1; }
+}
+
+if [ -n "$(ls -A "$vault" 2>/dev/null)" ]; then
+  echo "kept    $vault"
+  if [ ! -e "$vault/.git" ]; then
+    outside_any_repo "$vault"
+    git -C "$vault" init -q
+    echo "started git in $vault"
+  fi
+  if [ ! -f "$vault/CLAUDE.md" ]; then
+    skeleton
+    echo "added the missing vault files (schema, index, log, raw/, wiki/) to $vault"
+  fi
+else
+  mkdir -p "$(dirname "$vault")"
+  outside_any_repo "$(dirname "$vault")"
+  mkdir -p "$vault"
+  skeleton
+  git -C "$vault" init -q
+  git -C "$vault" add -A .
+  git -C "$vault" commit -q -m "docs(wiki): start the shared vault"
+  echo "created $vault"
+fi
+vault=$(cd "$vault" && pwd -P)
+
+# A commit that holds a project's private details fails, whoever makes it.
+if git -C "$vault" config --local core.hooksPath >/dev/null; then
+  hooks=$(cd "$vault" && mkdir -p "$(git rev-parse --git-path hooks)" && cd "$(git rev-parse --git-path hooks)" && pwd -P)
+else
+  hooks="$vault/.git/hooks"
+  if [ -n "$(git -C "$vault" config core.hooksPath || true)" ]; then
+    git -C "$vault" config --local core.hooksPath .git/hooks
+    echo "set core.hooksPath for $vault, so your global hooks folder does not switch its check off"
+  fi
+fi
+hook="$hooks/pre-commit"
+wanted=$(printf '#!/bin/sh\nexec "%s/bin/wk" shared-vault check\n' "$kit")
+if [ "$(cat "$hook" 2>/dev/null)" != "$wanted" ]; then
+  mkdir -p "$hooks"
+  if [ -e "$hook" ] && ! grep -q 'shared-vault check$' "$hook"; then
+    mv "$hook" "$hook.before-wk"
+    echo "moved your pre-commit hook to $hook.before-wk"
+  fi
+  printf '%s\n' "$wanted" > "$hook"
+  chmod +x "$hook"
+  echo "wrote   $hook"
+fi
+
+settings="$HOME/.claude/settings.json"
+[ -f "$settings" ] || { mkdir -p "$(dirname "$settings")"; echo '{}' > "$settings"; }
+if ! jq -e --arg vault "$vault" '.permissions.additionalDirectories // [] | index($vault)' "$settings" >/dev/null; then
+  saved=""
+  if [ -z "${WK_SETTINGS_SAVED:-}" ]; then
+    backup_dir="$HOME/.claude/backup/$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$backup_dir"
+    cp "$settings" "$backup_dir/"
+    saved=" (backup in $backup_dir)"
+  fi
+  jq --arg vault "$vault" '.permissions.additionalDirectories = ((.permissions.additionalDirectories // []) + [$vault])' "$settings" > "$settings.new"
+  mv "$settings.new" "$settings"
+  echo "allowed the shared vault in $settings$saved"
+fi
+
+# The doctor reads this stamp instead of asking Orca: it is written only once the automation is there.
+# It also names the vault the automation was made for, so one the owner removed is not created again.
+stamp="$state_dir/shared-vault-ready"
+name="Wiki lint: shared"
+if ! { repos=$(orca repo list --json) && automations=$(orca automations list --json); }; then
+  echo "shared-vault: Orca did not answer, so the automation '$name' is not set up yet. Start Orca and run \`wk shared-vault\` again." >&2
+  exit 75 # EX_TEMPFAIL: install.sh goes on, the doctor keeps the gap
+fi
+jq -e --arg vault "$vault" '.result.repos | any(.path == $vault)' <<<"$repos" >/dev/null \
+  || { orca repo add --path "$vault" --json >/dev/null; echo "added $vault to Orca"; }
+if ! jq -e --arg name "$name" '.result.automations | any(.name == $name)' <<<"$automations" >/dev/null && [ "$(cat "$stamp" 2>/dev/null)" = "$configured" ]; then
+  echo "kept automation '$name' removed (created before; delete $stamp to have it created again)"
+elif ! jq -e --arg name "$name" '.result.automations | any(.name == $name)' <<<"$automations" >/dev/null; then
+  orca automations create --name "$name" --trigger "0 10 * * 6" --prompt "Run the wiki-lint skill, then stop." \
+    --provider claude --workspace "path:$vault" --fresh-session --enabled --json >/dev/null
+  echo "created automation '$name'"
+elif [ -f "$stamp" ] && [ "$(cat "$stamp")" != "$configured" ]; then
+  echo "shared-vault: the automation '$name' still runs in $(cat "$stamp"). Remove it (\`orca automations list\`, then \`orca automations remove <id>\`) and run \`wk shared-vault\` again." >&2
+  exit 1
+fi
+mkdir -p "$state_dir"
+[ "$(cat "$stamp" 2>/dev/null)" = "$configured" ] || echo "$configured" > "$stamp"
