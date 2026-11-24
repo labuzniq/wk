@@ -37,3 +37,29 @@ setup() {
   is "$(jq length "$ORCA_STUB/repos.json")" 1
   [[ "$output" != *"created automation"* ]]
 }
+
+@test "an automation that is already in Orca is kept and named" {
+  echo '[{"name": "Pin update"}]' > "$ORCA_STUB/automations.json"
+  run "$kit/install.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"kept automation 'Pin update'"* ]]
+  is "$(jq length "$ORCA_STUB/automations.json")" 1
+}
+
+@test "an automation the owner removed is not created again" {
+  "$kit/install.sh"
+  echo '[]' > "$ORCA_STUB/automations.json"
+  run "$kit/install.sh"
+  [ "$status" -eq 0 ]
+  is "$(jq length "$ORCA_STUB/automations.json")" 0
+  [[ "$output" == *"kept automation 'Pin update' (created before; delete $HOME/.local/state/workspace-kit/pin-update-automation"* ]]
+}
+
+@test "when Orca does not answer, the install goes on and says the automation is not created" {
+  touch "$ORCA_STUB/down"
+  run "$kit/install.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Orca gave no list of automations, so 'Pin update' is not created; start Orca and run install.sh again"* ]]
+  [ -L "$HOME/.local/bin/wk" ]
+  [ ! -e "$HOME/.local/state/workspace-kit/pin-update-automation" ]
+}

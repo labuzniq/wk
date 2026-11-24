@@ -23,8 +23,13 @@ KIT = Path(tomllib.loads((Path.home() / ".config/workspace-kit/config.toml").rea
 LIMIT = 50
 BRANCH_PREFIX = "pins-update/"
 BODY_DIFF_LIMIT = 50_000  # GitHub cuts a pull request text at 65,536 characters
-# Variables that would send an install to the real home folder although HOME points at a throwaway one.
-REDIRECTS = {"CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"}
+LINE_LIMIT = 1000  # longer than any line installed today (938); a longer changed line could hide a page of text in one counted line
+# The only variables a throwaway install sees: no token, no config path that leads back to the real home.
+# NPX_STUB is where the tests' stand-in for npx keeps its answers.
+KEPT = {"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TERM", "USER", "LOGNAME", "SHELL",
+        "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "NPX_STUB"}
+LOCK_FILES = {"skills.txt", "agents/agents.toml", "skills.lock", "agents/agents.lock"}
+os.environ["GIT_TERMINAL_PROMPT"] = "0"  # a run started by Orca has nobody to type a password
 # The doctor's checks of one project; the scratch project has no capsule, so only the checks of the install count.
 PROJECT_CHECKS = ["claude_md", "mise", "orca_repo", "orca_files", "orca_setup_hook", "vision", "vision_fresh",
                   "matt_setup", "tracker", "automations", "vault_page", "proposals"]
@@ -47,8 +52,10 @@ def run(*args: object, cwd: Path | None = None, env: dict | None = None, ok: tup
 
 
 def newest(url: str) -> str:
+    if url.startswith("-"):
+        sys.exit(f"pins-update: '{url}' is not a repo; fix the source in agents/agents.toml")
     answer = run("git", "ls-remote", url, "HEAD").split()
-    if not answer:
+    if not answer or not re.fullmatch(r"[0-9a-f]{40}", answer[0]):
         sys.exit(f"pins-update: {url} has no HEAD commit; check the source in skills.txt or agents/agents.toml")
     return answer[0]
 
@@ -58,8 +65,8 @@ def throwaway_home(home: Path, kit: Path) -> dict:
     (home / ".config/workspace-kit").mkdir(parents=True)
     (home / ".config/workspace-kit/config.toml").write_text(
         f"projects_root = {json.dumps(str(home / 'projects'))}\nkit = {json.dumps(str(kit))}\n")
-    env = {key: value for key, value in os.environ.items() if key not in REDIRECTS}
-    return env | {"HOME": str(home), "npm_config_cache": str(home.parent / "npm-cache")}
+    env = {key: value for key, value in os.environ.items() if key in KEPT}
+    return env | {"HOME": str(home), "npm_config_cache": str(home.parent / "npm-cache"), "GIT_TERMINAL_PROMPT": "0"}
 
 
 def upstream_skills(work: Path, side: str, skills_txt: str) -> None:
@@ -82,23 +89,38 @@ def upstream_agents(work: Path, repo: str, commits: dict[str, str], names: list[
         folder = work / "upstream" / side / "agents"
         folder.mkdir(parents=True)
         for name in names:
+            if call("git", "-C", checkout, "cat-file", "-e", f"FETCH_HEAD:agents/{name}.md").returncode != 0:
+                sys.exit(f"pins-update: {repo} at {commit[:10]} has no agent '{name}'; nothing was pushed. "
+                         "Remove it from agents/agents.toml, or keep the old pin and look for its new name upstream.")
             (folder / f"{name}.md").write_text(run("git", "-C", checkout, "show", f"FETCH_HEAD:agents/{name}.md"))
 
 
 def count_lines(upstream: Path, items: list[str]) -> tuple[list[tuple[str, int, int]], list[str]]:
-    """Per changed skill or agent: lines added and removed upstream. Second value: the ones with a changed binary file, which has no lines to count."""
+    """Per changed skill or agent: lines added and removed upstream. Second value: changes that lines cannot measure."""
     changed, uncounted = [], []
     for item in items:
+        name = item.removesuffix(".md")
         added = removed = 0
-        numstat = run("git", "diff", "--no-index", "--no-ext-diff", "--numstat", "--", f"old/{item}", f"new/{item}", cwd=upstream, ok=(0, 1))
-        for line in numstat.splitlines():
+        diff = ["git", "diff", "--no-index", "--no-ext-diff", "--no-color"]
+        paths = ["--", f"old/{item}", f"new/{item}"]
+        for line in run(*diff, "--raw", "--numstat", *paths, cwd=upstream, ok=(0, 1)).splitlines():
+            if line.startswith(":"):
+                old_mode, new_mode = line[1:].split()[:2]
+                if "120000" in (old_mode, new_mode):
+                    uncounted.append(f"{name} has a symbolic link")
+                elif "000000" not in (old_mode, new_mode) and old_mode != new_mode:
+                    uncounted.append(f"{name} has a file mode change")
+                continue
             plus, minus, _ = line.split("\t", 2)
             if plus == "-":
-                uncounted.append(item.removesuffix(".md"))
+                uncounted.append(f"{name} has a binary file")
             else:
                 added, removed = added + int(plus), removed + int(minus)
-        if numstat.strip():
-            changed.append((item.removesuffix(".md"), added, removed))
+        text = run(*diff, *paths, cwd=upstream, ok=(0, 1))
+        if any(len(line) > LINE_LIMIT + 1 and line[:1] in "+-" for line in text.splitlines()):
+            uncounted.append(f"{name} has a changed line over {LINE_LIMIT} characters")
+        if added or removed or text.strip():
+            changed.append((name, added, removed))
     return changed, uncounted
 
 
@@ -129,10 +151,10 @@ def conditions(clone: Path, work: Path, lines: int, uncounted: list[str]) -> lis
         result = doctor_gaps(env)
         doctor = (result.returncode == 0 and not said(result), said(result) or (f"exit code {result.returncode}" if result.returncode else ""))
     return [
-        ("every patch still applies (`wk skills-sync` and `wk agents-sync` succeed)", not failure, failure),
+        ("`wk skills-sync` and `wk agents-sync` succeed, so every patch still applies", not failure, failure),
         ("`wk doctor` reports no gap for the new install", *doctor),
         (f"upstream change under {LIMIT} lines (added plus removed)", lines < LIMIT and not uncounted,
-         f"{lines} lines" + (f"; a binary file changed in {', '.join(sorted(set(uncounted)))}, and its lines cannot be counted" if uncounted else "")),
+         f"{lines} lines" + (f"; lines cannot measure this: {', '.join(sorted(set(uncounted)))}" if uncounted else "")),
     ]
 
 
@@ -169,10 +191,11 @@ def pr_body(moves: list, checks: list, changed: list, diff: str) -> str:
             parts.append(f"Why \"{what}\" fails:\n\n{fenced(detail, 'text')}")
     if not checks[0][1]:
         parts.append(
-            "The lock files in this pull request are not complete. To finish it:\n\n"
-            "1. Change the patch named above so that it fits the new upstream text (the diff below shows it), or delete the patch. Push that to this branch.\n"
-            "2. Merge this pull request.\n"
-            "3. In the kit, run `git pull`, then `wk skills-sync` and `wk agents-sync`, and commit the lock files they write.")
+            "The sync failed, so the lock files in this pull request are not complete. Do not merge it. Instead:\n\n"
+            "1. Close this pull request.\n"
+            "2. On main, fix what the message above names. For a patch that no longer applies: change it to fit the new upstream text "
+            "(the diff below shows it), or delete it.\n"
+            "3. Wait for the next run. A changed patch makes it offer these versions again, with complete lock files.")
     parts += [
         "### What changed upstream",
         f"{added + removed} lines ({added} added, {removed} removed) in the upstream text of the pinned skills and agents, before any patch of this repo.",
@@ -206,16 +229,21 @@ def main() -> None:
         agents_toml = (clone / "agents/agents.toml").read_text()
         manifest = tomllib.loads(agents_toml)
         agents_repo, agents_commit = manifest["source"]["repo"], manifest["source"]["commit"]
-        new_skills_txt, moves = skills_txt, []
+        new_lines, moves = [], []
         for line in skills_txt.splitlines():
             if not line.strip():
+                new_lines.append(line)
                 continue
-            package, _, commit = line.split()[0].partition("#")
+            package_ref, *names = line.split()
+            package, _, commit = package_ref.partition("#")
+            if not re.fullmatch(r"[\w.-]+/[\w.-]+", package):
+                sys.exit(f"pins-update: '{package}' is not a package; write it as owner/repo#<commit> in skills.txt")
             url = f"https://github.com/{package}"
             latest = newest(url)
-            if latest != commit:
+            if latest != commit and (package, url, commit, latest) not in moves:
                 moves.append((package, url, commit, latest))
-                new_skills_txt = new_skills_txt.replace(f"{package}#{commit}", f"{package}#{latest}")
+            new_lines.append(" ".join([f"{package}#{latest}", *names]))
+        new_skills_txt = "\n".join(new_lines) + "\n"
         new_agents_commit = newest(agents_repo)
         if new_agents_commit != agents_commit:
             moves.append((agents_repo.removeprefix("https://github.com/"), agents_repo, agents_commit, new_agents_commit))
@@ -223,7 +251,9 @@ def main() -> None:
             print("pins-update: every pin is at the newest upstream commit; no pull request")
             return
         new_agents_toml = agents_toml.replace(agents_commit, new_agents_commit)
-        branch = BRANCH_PREFIX + patches.sha256((new_skills_txt + new_agents_toml).encode())[:10]
+        # The branch name stands for these versions with these patches: a changed patch makes a new offer.
+        patch_texts = b"".join(path.read_bytes() for path in sorted((clone / "patches").rglob("*.patch")))
+        branch = BRANCH_PREFIX + patches.sha256((new_skills_txt + new_agents_toml).encode() + patch_texts)[:10]
 
         for pr in json.loads(run("gh", "pr", "list", "--state", "all", "--limit", "1000", "--json", "url,state,headRefName", cwd=clone)):
             if pr["state"] == "OPEN" and pr["headRefName"].startswith(BRANCH_PREFIX):
@@ -243,6 +273,8 @@ def main() -> None:
         changed, uncounted = count_lines(upstream, items)
         lines = sum(added + removed for _, added, removed in changed)
         diff = run("git", "diff", "--no-index", "--no-ext-diff", "--no-color", "--", "old", "new", cwd=upstream, ok=(0, 1))
+        if len(diff) > BODY_DIFF_LIMIT:
+            uncounted.append(f"the diff is over {BODY_DIFF_LIMIT} characters, too long to show in full in the pull request")
 
         (clone / "skills.txt").write_text(new_skills_txt)
         (clone / "agents/agents.toml").write_text(new_agents_toml)
@@ -254,17 +286,25 @@ def main() -> None:
             print("pins-update: dry run, nothing was pushed; " + (f"the pull request would wait for you: failed: {reasons}" if reasons else "the pull request would be merged"))
             return
 
+        written = {line[3:] for line in run("git", "-C", clone, "status", "--porcelain", "--untracked-files=all").splitlines()}
+        if written - LOCK_FILES:
+            sys.exit(f"pins-update: the sync wrote files other than the pins and lock files ({', '.join(sorted(written - LOCK_FILES))}); nothing was pushed")
         run("git", "-C", clone, "switch", "-q", "-c", branch)
         run("git", "-C", clone, "add", "-A")
         run("git", "-C", clone, "commit", "-q", "-m", "chore: move the pins to the newest upstream versions")
+        if run("git", "-C", clone, "ls-remote", "--heads", "origin", branch).strip():
+            # No pull request names this branch (checked above): an earlier run pushed it and then failed.
+            run("git", "-C", clone, "push", "-q", "origin", "--delete", branch)
+            print(f"pins-update: removed the branch {branch}, which an earlier run left without a pull request")
         run("git", "-C", clone, "push", "-q", "origin", branch)
+        head = run("git", "-C", clone, "rev-parse", "HEAD").strip()
         (work / "body.md").write_text(body)
         url = run("gh", "pr", "create", "--base", base, "--head", branch, "--title", f"chore: pin update, {lines} upstream lines changed",
                   "--body-file", work / "body.md", cwd=clone).strip().splitlines()[-1]
         if reasons:
             print(f"pins-update: {url} waits for you; failed: {reasons}")
             return
-        merge = call("gh", "pr", "merge", url, "--squash", "--delete-branch", cwd=clone)
+        merge = call("gh", "pr", "merge", url, "--squash", "--delete-branch", "--match-head-commit", head, cwd=clone)
         if merge.returncode != 0:
             print(f"pins-update: {url} waits for you; every condition holds, but the merge failed: {' '.join(said(merge).split())}")
             return

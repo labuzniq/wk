@@ -35,10 +35,10 @@ skill_version() {
   printf '%s\n' "$1" > "$skills_repo/alpha/SKILL.md"
   git -C "$skills_repo" add -A
   git -C "$skills_repo" commit -q -m "feat: alpha"
-  local package
+  local package skill
   package="$NPX_STUB/someone/skills#$(git -C "$skills_repo" rev-parse HEAD)"
   mkdir -p "$package"
-  cp -R "$skills_repo/alpha" "$package/alpha"
+  for skill in "$skills_repo"/*/; do cp -R "${skill%/}" "$package/"; done
 }
 
 # agent_version <last line>: a new upstream commit of the agent reviewer.
@@ -83,7 +83,7 @@ no_gh_call() { if grep -E "$1" "$GH_STUB/calls"; then echo "gh was called this w
   url=https://github.com/test/kit/pull/1
   is "$(last_line)" "pins-update: merged $url (2 upstream lines changed); to undo it, run \`gh pr revert $url\` and merge the pull request it opens"
   is "$(jq -r '.[0].state' "$GH_STUB/prs.json")" MERGED
-  grep -q "^pr merge $url --squash --delete-branch$" "$GH_STUB/calls"
+  is "$(cat "$GH_STUB/merged-head")" "$(git -C "$origin" rev-parse "$(pr_branch)")"
 }
 
 @test "the pull request branch holds the new pins and the lock files written for them" {
@@ -148,7 +148,90 @@ no_gh_call() { if grep -E "$1" "$GH_STUB/calls"; then echo "gh was called this w
   printf '\0\1\2' > "$skills_repo/alpha/logo.bin"
   skill_version $'line one\nline two'
   run "$kit/bin/wk" pins-update
-  [[ "$(last_line)" == *"waits for you; failed: upstream change under 50 lines (added plus removed): 0 lines; a binary file changed in skills/alpha, and its lines cannot be counted" ]]
+  [[ "$(last_line)" == *"waits for you; failed: upstream change under 50 lines (added plus removed): 0 lines; lines cannot measure this: skills/alpha has a binary file" ]]
+}
+
+@test "one very long changed line counts as one line, so the pull request waits" {
+  skill_version "line one"$'\n'"$(printf 'x%.0s' $(seq 1 1100))"
+  run "$kit/bin/wk" pins-update
+  [[ "$(last_line)" == *"waits for you; failed: upstream change under 50 lines (added plus removed): 2 lines; lines cannot measure this: skills/alpha has a changed line over 1000 characters" ]]
+}
+
+@test "a diff too long to show in full makes the pull request wait" {
+  long=$(printf 'x%.0s' $(seq 1 3000))
+  skill_version "$long"$'\n'"line two"
+  echo "someone/skills#$(git -C "$skills_repo" rev-parse HEAD) alpha" > "$HOME/kit/skills.txt"
+  push_kit "chore: pin a skill with a long line"
+  skill_version "$long"$'\n'"line two"$'\n'"$(for _ in $(seq 1 48); do printf 'y%.0s' $(seq 1 999); echo; done)"
+  run "$kit/bin/wk" pins-update
+  [[ "$(last_line)" == *"waits for you; failed: upstream change under 50 lines (added plus removed): 48 lines; lines cannot measure this: the diff is over 50000 characters"* ]]
+}
+
+@test "a new symbolic link upstream makes the pull request wait" {
+  ln -s SKILL.md "$skills_repo/alpha/link.md"
+  skill_version $'line one\nline two'
+  run "$kit/bin/wk" pins-update
+  [[ "$(last_line)" == *"waits for you; failed: upstream change under 50 lines"*"skills/alpha has a symbolic link" ]]
+}
+
+@test "a file that becomes a program upstream makes the pull request wait" {
+  chmod +x "$skills_repo/alpha/SKILL.md"
+  skill_version $'line one\nline two'
+  run "$kit/bin/wk" pins-update
+  [[ "$(last_line)" == *"waits for you; failed: upstream change under 50 lines"*"skills/alpha has a file mode change" ]]
+}
+
+@test "the installs of the run see no token and no config path of the real home" {
+  skill_version $'line one\nline two, reworded'
+  GH_TOKEN=secret NODE_OPTIONS=--require=/x GIT_CONFIG_GLOBAL="$HOME/.gitconfig" "$kit/bin/wk" pins-update
+  is "$(grep -cxE 'GH_TOKEN|NODE_OPTIONS|GIT_CONFIG_GLOBAL' "$NPX_STUB/env")" 0
+  grep -qx HOME "$NPX_STUB/env"
+}
+
+@test "two lines of one package in skills.txt move together, shown once" {
+  mkdir -p "$skills_repo/beta"
+  echo "beta text" > "$skills_repo/beta/SKILL.md"
+  skill_version $'line one\nline two'
+  old=$(git -C "$skills_repo" rev-parse HEAD)
+  printf 'someone/skills#%s alpha\nsomeone/skills#%s beta\n' "$old" "$old" > "$HOME/kit/skills.txt"
+  push_kit "feat: pin beta"
+  skill_version $'line one\nline two, reworded'
+  new=$(git -C "$skills_repo" rev-parse HEAD)
+  "$kit/bin/wk" pins-update
+  is "$(git -C "$origin" show "$(pr_branch):skills.txt")" "someone/skills#$new alpha"$'\n'"someone/skills#$new beta"
+  is "$(grep -c '^| \[someone/skills\]' "$GH_STUB/pr-body.md")" 1
+}
+
+@test "a branch left by a run whose pull request failed is replaced by the next run" {
+  touch "$GH_STUB/fail-create"
+  skill_version $'line one\nline two, reworded'
+  # An older date, so the next run's commit differs even within the same second.
+  GIT_AUTHOR_DATE=2026-01-01T00:00:00 GIT_COMMITTER_DATE=2026-01-01T00:00:00 run "$kit/bin/wk" pins-update
+  [ "$status" -ne 0 ]
+  rm "$GH_STUB/fail-create"
+  run "$kit/bin/wk" pins-update
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"removed the branch pins-update/"*", which an earlier run left without a pull request"* ]]
+  [[ "$(last_line)" == "pins-update: merged https://github.com/test/kit/pull/1 "* ]]
+}
+
+@test "an agent that is gone upstream stops the run and says what to change" {
+  git -C "$agents_repo" rm -q agents/reviewer.md
+  echo "other" > "$agents_repo/README.md"
+  git -C "$agents_repo" add -A
+  git -C "$agents_repo" commit -q -m "feat: drop reviewer"
+  run "$kit/bin/wk" pins-update
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"has no agent 'reviewer'; nothing was pushed. Remove it from agents/agents.toml"* ]]
+  is "$(branches)" "main"
+}
+
+@test "a package name that git could read as an option is refused before any network call" {
+  echo "--upload-pack=x/skills#$(git -C "$skills_repo" rev-parse HEAD) alpha" > "$HOME/kit/skills.txt"
+  push_kit "chore: bad package"
+  run "$kit/bin/wk" pins-update
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"'--upload-pack=x/skills' is not a package"* ]]
 }
 
 @test "a patch of this repo does not count as an upstream change" {
@@ -168,10 +251,24 @@ no_gh_call() { if grep -E "$1" "$GH_STUB/calls"; then echo "gh was called this w
   skill_version $'line one\nline two, reworded'
   run "$kit/bin/wk" pins-update
   [ "$status" -eq 0 ]
-  [[ "$(last_line)" == "pins-update: https://github.com/test/kit/pull/1 waits for you; failed: every patch still applies"* ]]
+  [[ "$(last_line)" == "pins-update: https://github.com/test/kit/pull/1 waits for you; failed: \`wk skills-sync\` and \`wk agents-sync\` succeed, so every patch still applies: \`wk skills-sync\` failed:" ]]
   no_gh_call "^pr merge"
   [[ "$(cat "$GH_STUB/pr-body.md")" == *"patches/skills/alpha.patch no longer applies"* ]]
-  [[ "$(cat "$GH_STUB/pr-body.md")" == *"The lock files in this pull request are not complete."* ]]
+  [[ "$(cat "$GH_STUB/pr-body.md")" == *"Do not merge it."*"1. Close this pull request."* ]]
+}
+
+@test "after the owner closes that pull request and fixes the patch, the next run offers the versions again" {
+  mkdir -p "$HOME/kit/patches/skills"
+  printf -- '--- a/SKILL.md\n+++ b/SKILL.md\n@@ -1,2 +1,2 @@\n line one\n-line two\n+line two, patched\n' > "$HOME/kit/patches/skills/alpha.patch"
+  push_kit "feat: patch alpha"
+  skill_version $'line one\nline two, reworded'
+  "$kit/bin/wk" pins-update
+  jq -c '.[0].state = "CLOSED"' "$GH_STUB/prs.json" > "$GH_STUB/prs.json.new"
+  mv "$GH_STUB/prs.json.new" "$GH_STUB/prs.json"
+  printf -- '--- a/SKILL.md\n+++ b/SKILL.md\n@@ -1,2 +1,2 @@\n line one\n-line two, reworded\n+line two, patched\n' > "$HOME/kit/patches/skills/alpha.patch"
+  push_kit "fix: fit the alpha patch to the new text"
+  run "$kit/bin/wk" pins-update
+  [[ "$(last_line)" == "pins-update: merged https://github.com/test/kit/pull/2 "* ]]
 }
 
 @test "a doctor gap in the new install: the pull request waits and shows the gap" {
