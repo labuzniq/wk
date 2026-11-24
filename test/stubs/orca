@@ -24,6 +24,13 @@ case "$1 ${2:-}" in
     mv "$ORCA_STUB/repos.json.new" "$ORCA_STUB/repos.json"
     jq -c '{result: {repo: .[-1]}}' "$ORCA_STUB/repos.json"
     ;;
+  "skills install")
+    shift 2
+    while [ $# -gt 0 ]; do
+      [ "$1" != --skill ] || { mkdir -p "$HOME/.agents/skills/$2"; echo "# stand-in $2" > "$HOME/.agents/skills/$2/SKILL.md"; }
+      shift
+    done
+    ;;
   "automations list") jq -c '{result: {automations: .}}' "$ORCA_STUB/automations.json" ;;
   "automations create")
     jq -c --arg name "$4" '. + [{name: $name}]' "$ORCA_STUB/automations.json" > "$ORCA_STUB/automations.json.new"

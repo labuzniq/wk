@@ -105,12 +105,46 @@ def tracker_config(root: Path) -> None:
         print("added Agent skills block to CLAUDE.md")
 
 
-def manifest(slug: str, project_type: str, stacks: list[str], repo_id: str) -> str:
+def manifest(slug: str, project_type: str, stacks: list[str]) -> str:
     return (
         f'slug = "{slug}"\ntype = "{project_type}"\nstack = {toml_list(stacks)}\n'
-        f'orca_repo_id = "{repo_id}"\nvault = "knowledge-base"\n\n'
+        'vault = "knowledge-base"\n\n'
         "[vision]\nmin_commits = 20\nrefresh_days = 90\n\n[skip]\n"
     )
+
+
+def remember_repo(primary: Path, repo_id: str) -> None:
+    """The Orca repo id is true for one person only: it lives in the state folder, never in the repo."""
+    record = STATE / "repos" / hashlib.sha1(str(primary).encode()).hexdigest()
+    text = f'orca_repo_id = "{repo_id}"\n'
+    if record.exists() and record.read_text() == text:
+        return
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text(text)
+    print(f"saved   the Orca repo id for this Mac in {record}")
+
+
+def drop_personal_values(root: Path, primary: Path) -> None:
+    """A capsule written before the split holds the Orca repo id of the person who adopted the repo."""
+    manifest_file = root / ".workspace-kit.toml"
+    text = manifest_file.read_text()
+    shared = re.sub(r"^orca_repo_id *=.*\n", "", text, flags=re.MULTILINE)
+    if root != primary:
+        # A worktree holds a ticket's branch; the clean-up of the capsule is not that ticket's change.
+        if shared != text:
+            print("kept    orca_repo_id in this worktree's .workspace-kit.toml; `wk adopt` in the primary checkout removes it")
+        return
+    if shared != text:
+        manifest_file.write_text(shared)
+        print("removed orca_repo_id from .workspace-kit.toml: it is true for one person only and now lives outside the repo; commit the change")
+    tracker = root / "docs/agents/issue-tracker.md"
+    text = tracker.read_text()
+    shared = text
+    for old, new in OLD_REPO_ID_TEXT.items():
+        shared = shared.replace(old, new)
+    if shared != text:
+        tracker.write_text(shared)
+        print("updated docs/agents/issue-tracker.md: the repo is named by its path, not by one person's Orca repo id; commit the change")
 
 
 def orca_repo_id(root: Path) -> str:
@@ -118,9 +152,16 @@ def orca_repo_id(root: Path) -> str:
     for repo in repos:
         if repo["path"] == str(root):
             return repo["id"]
-    return json.loads(run("orca", "repo", "add", "--path", str(root), "--json"))["result"]["repo"]["id"]
+    repo_id = json.loads(run("orca", "repo", "add", "--path", str(root), "--json"))["result"]["repo"]["id"]
+    print(f"added   {root} to Orca")
+    return repo_id
 
 
+STATE = Path.home() / ".local/state/workspace-kit"
+OLD_REPO_ID_TEXT = {
+    " The repo id is `orca_repo_id` in `.workspace-kit.toml`.": " Name the repo by the path of its primary checkout, the first line of `git worktree list`.",
+    "--repo id:<repoId> ": "--repo path:<primary checkout> ",
+}
 IGNORED = [".env", ".env.local", "mise.local.toml", ".claude/settings.local.json"]
 QUEUE = "~/.local/state/workspace-kit/sessions/{slug}/queue"
 AUTOMATIONS = {
@@ -204,14 +245,18 @@ def main() -> None:
         if stack not in STACKS:
             parser.error(f"unknown stack '{stack}'")
     primary = Path(run("git", "rev-parse", "--path-format=absolute", "--git-common-dir").strip()).parent
-    slug = primary.name.lower()
+    manifest_file = root / ".workspace-kit.toml"
+    # The slug names the session queue and the automations: a clone in a folder of another name keeps the committed one.
+    slug = (tomllib.loads(manifest_file.read_text()).get("slug") if manifest_file.exists() else None) or primary.name.lower()
     repo_id = orca_repo_id(primary)
     base = run("git", "-C", str(primary), "branch", "--show-current").strip()
     if "origin" in run("git", "-C", str(primary), "remote").split():
         base = f"origin/{base}"
     run("orca", "repo", "set-base-ref", "--repo", f"id:{repo_id}", "--ref", base, "--json")
+    print(f"set     the Orca base ref to {base}")
 
-    write_new(root / ".workspace-kit.toml", manifest(slug, args.type, stacks, repo_id))
+    remember_repo(primary, repo_id)
+    write_new(manifest_file, manifest(slug, args.type, stacks))
     write_new(root / "mise.toml", mise_toml(slug, stacks, root))
     write_new(root / "orca.yaml", ORCA_YAML)
     tracker_config(root)
@@ -221,6 +266,7 @@ def main() -> None:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(template, target)
             print(f"created {target.relative_to(root)}")
+    drop_personal_values(root, primary)
     create_vault(root / "knowledge-base", slug)
     ignore(root)
     vault = primary / "knowledge-base"
