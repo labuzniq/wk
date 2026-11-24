@@ -128,6 +128,14 @@ EOF
 )\""
 }
 
+@test "a heredoc with a dashed tag is read as a message" {
+  blocked "git commit -m \"\$(cat <<'END-MSG'
+wip; git push --force origin main
+END-MSG
+)\""
+  [[ "$output" == *'starts with "wip; git push --force origin main"'* ]]
+}
+
 @test "a conventional commit message passes" {
   allowed 'git commit -m "feat: add the login page"'
   allowed 'git commit -am "fix(board)!: keep a completed card"'

@@ -14,7 +14,7 @@ setup() {
 
 # agent_writes <tool> <file> [cwd] [session_id]: feed the hook what Claude Code sends before a file write.
 agent_writes() {
-  jq -n --arg tool "$1" --arg file "$2" --arg cwd "${3:-$project}" --arg id "${4:-abc}" \
+  jq -n --arg tool "$1" --arg file "$2" --arg cwd "${3:-$project}" --arg id "${4-abc}" \
     '{session_id: $id, transcript_path: "/transcripts/\($id).jsonl", cwd: $cwd, permission_mode: "default", hook_event_name: "PreToolUse",
       tool_name: $tool, tool_use_id: "toolu_1",
       tool_input: (if $tool == "NotebookEdit" then {notebook_path: $file, new_source: "x"} else {file_path: $file, content: "x"} end)}' \
@@ -37,6 +37,7 @@ allowed() {
   [[ "$output" == *"$project/knowledge-base/wiki/learnings.md is a wiki page"* ]]
   [[ "$output" == *"write a dated note to $project/knowledge-base/raw/inbox/<date>-<title>.md"* ]]
   [[ "$output" == *'run the `wiki-ingest` or `wiki-lint` skill'* ]]
+  [[ "$output" == *'Only if this session is running one of those two skills'*'never set it for other work.' ]]
 }
 
 @test "the message gives a wiki run that was not marked the command that marks it" {
@@ -52,6 +53,12 @@ allowed() {
   run agent_writes Write "$project/knowledge-base/wiki/learnings.md" "$project" "../../../../.gitconfig"
   is "$status" 1
   [[ "$output" == "check-wiki-write: the session id "* ]]
+}
+
+@test "an empty session id lets the write pass and names the real problem" {
+  run agent_writes Write "$project/knowledge-base/wiki/learnings.md" "$project" ""
+  is "$status" 1
+  [[ "$output" == "check-wiki-write: the hook input is not the JSON a file write sends"* ]]
 }
 
 @test "a vault written with a closing slash is covered" {
