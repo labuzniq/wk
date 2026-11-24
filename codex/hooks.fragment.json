@@ -1,0 +1,8 @@
+{
+  "hooks": {
+    "SessionStart": [{"matcher": "startup|resume", "hooks": [{"type": "command", "command": "__KIT__/hooks/session-start.sh"}]}],
+    "SessionEnd": [{"hooks": [{"type": "command", "command": "__KIT__/hooks/enqueue-session.sh"}]}],
+    "PreCompact": [{"matcher": "manual|auto", "hooks": [{"type": "command", "command": "__KIT__/hooks/enqueue-session.sh"}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "__KIT__/hooks/stop.sh"}]}]
+  }
+}

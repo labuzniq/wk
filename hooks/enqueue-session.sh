@@ -3,6 +3,7 @@
 kit="$(dirname "$0")/.."
 input=$(cat)
 session_id=$(jq -r '.session_id' <<<"$input")
+[ -n "$(jq -r '.transcript_path // empty' <<<"$input")" ] || exit 0 # a Codex ephemeral session keeps no transcript
 cd "$(jq -r '.cwd' <<<"$input")" 2>/dev/null || exit 0
 # shellcheck source=../lib/project.sh
 . "$kit/lib/project.sh" || exit 0

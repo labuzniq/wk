@@ -32,6 +32,8 @@ The argument is the folder your projects live in. The installer can be run again
 
 `~/.claude/CLAUDE.md` stays yours: the installer keeps your text and never replaces the file, so your own rules (language, tone, habits) go there, below the import line. The shared rules (Orca, Git, the review gate) stay in the kit and reach everyone with `git pull`. An install from before this split (a link to `claude/CLAUDE.md`) moves to the new layout on the next installer run. Run the installer right after the `git pull` that brings the split: until then the lines that became personal (the Language section) are not loaded, and `wk doctor` reports an `instructions` gap.
 
+**Codex too, when it is installed.** With `codex` on `PATH`, the installer also copies the shared instructions into `~/.codex/AGENTS.md` (between two marker lines; your text below them is kept), links the kit's skills into `~/.agents/skills`, where Codex finds the other skills, and merges the session hooks into `~/.codex/hooks.json`. Open `/hooks` in Codex once and trust them: Codex skips a new hook until you do. Codex has no worktree hooks, and the copy of the instructions is refreshed only when you run the installer again; see `docs/verified.md`. Finished Codex sessions are queued and ingested like Claude Code sessions.
+
 Then do the three manual Orca settings in [`docs/orca-settings.md`](docs/orca-settings.md).
 
 ## Commands

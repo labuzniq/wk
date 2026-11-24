@@ -13,7 +13,7 @@ setup() {
   rm -r "$HOME/.claude" "$HOME/.config/workspace-kit"
   copy="$HOME/kit copy"
   mkdir -p "$copy/bin" "$copy/docs"
-  cp -R "$kit/install.sh" "$kit/claude" "$kit/skills" "$kit/skills.txt" "$kit/templates" "$copy/"
+  cp -R "$kit/install.sh" "$kit/claude" "$kit/codex" "$kit/skills" "$kit/skills.txt" "$kit/templates" "$copy/"
   cp "$kit/docs/orca-settings.md" "$copy/docs/"
   printf '#!/usr/bin/env bash\necho "$*" >> "$HOME/wk-calls"\n[ "$1" != shared-vault ] || exec "%s/libexec/wk-shared-vault"\n' "$kit" > "$copy/bin/wk"
   chmod +x "$copy/bin/wk"
