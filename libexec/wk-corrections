@@ -8,6 +8,17 @@ set -euo pipefail
 
 due_at=3
 vault=$(vault_dir)
+newline=$'\n'
+tab=$'\t'
+trailer='(^|[[:space:]])Correction: [a-z0-9-]+$'
+
+# checks: one "<key> <commit> <date>" line per correction a commit names, newest commit first. One walk of the history for all records.
+checks() {
+  git -C "$root" log --all -E --grep="$trailer" --format='@@commit %h %cs%n%B' 2>/dev/null | awk -v trailer="$trailer" '
+    /^@@commit / { commit = $2 " " $3; next }
+    $0 ~ trailer && !seen[$NF]++ { print $NF, commit }' || true
+}
+checked=""
 
 for record in "$vault"/wiki/corrections/*.md; do
   [ -f "$record" ] || continue
@@ -15,21 +26,30 @@ for record in "$vault"/wiki/corrections/*.md; do
   key=${key%.md}
   # One awk per record keeps the doctor fast: the layer on the first line, then each session summary once.
   parsed=$(awk '
+    { sub(/\r$/, "") }
     NR == 1 && $0 == "---" { inside = 1; next }
     !inside || $0 == "---" { exit }
-    /^layer:/ { layer = $2 }
-    /^[[:space:]]*-[[:space:]]*raw\/sessions\// {
-      sub(/^[[:space:]]*-[[:space:]]*/, ""); sub(/[[:space:]]+$/, "")
+    /^layer:/ { layer = $2; gsub(/["\047]/, "", layer) }
+    /^[[:space:]]*-[[:space:]]*["\047]?raw\/sessions\// {
+      sub(/^[[:space:]]*-[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); gsub(/["\047]/, "")
       if (!seen[$0]++) sessions = sessions "\n" $0
     }
     END { printf "%s%s\n", layer, sessions }' "$record")
-  layer=${parsed%%$'\n'*}
+  layer=${parsed%%"$newline"*}
 
-  count=0 missing=""
+  # A session that was resumed has two summaries that end in the same session id; it counts once.
+  count=0 missing="" ids=" " newest=""
   if [ "$parsed" != "$layer" ]; then
-    sessions=${parsed#*$'\n'}
+    sessions=${parsed#*"$newline"}
     while IFS= read -r session; do
-      if [ -f "$vault/$session" ]; then count=$((count + 1)); else missing="${missing:-$session}"; fi
+      name=${session##*/}
+      name=${name%.md}
+      case "$session" in *..*) missing="${missing:-$session}"; continue ;; esac
+      [ -f "$vault/$session" ] || { missing="${missing:-$session}"; continue; }
+      case "$ids" in *" ${name##*-} "*) continue ;; esac
+      ids="$ids${name##*-} "
+      count=$((count + 1))
+      [[ ! "$name" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2} ]] || [[ ! "${name:0:10}" > "$newest" ]] || newest=${name:0:10}
     done <<SESSIONS
 $sessions
 SESSIONS
@@ -40,12 +60,19 @@ SESSIONS
   if [[ ! "$key" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
     state=broken note="the file name must be a key of lowercase letters, digits and dashes; rename the file"
   elif [ -n "$missing" ]; then
-    state=broken note="$missing is not in the vault; list only session summaries that exist, as \`  - raw/sessions/<file>.md\`"
+    state=broken note="$missing is not a session summary in the vault; list only files that exist under raw/sessions/"
+  elif [ "$count" -eq 0 ]; then
+    state=broken note="the frontmatter lists no session summary; write \`sources:\` with one \`  - raw/sessions/<file>.md\` line per session"
   elif [[ ! "$layer" =~ ^(design|check|proof|prose)$ ]]; then
-    state=broken note="layer must be design, check, proof or prose; set \`layer:\` in the record's frontmatter"
+    state=broken note="layer must be design, check, proof or prose; set \`layer:\` to one of these words in the record's frontmatter"
   elif [ "$state" = due ]; then
-    commit=$(git -C "$root" log --all -1 --format=%h -E --grep="(^|[[:space:]])Correction: $key\$" 2>/dev/null || true)
-    [ -z "$commit" ] || { state="done"; note=$commit; }
+    [ -n "$checked" ] || checked="$newline$(checks)$newline"
+    case "$checked" in *"$newline$key "*)
+      commit=${checked#*"$newline$key "}
+      commit=${commit%%"$newline"*}
+      # A session newer than the check means the check missed the mistake: due again.
+      if [[ "$newest" > "${commit#* }" ]]; then note="after ${commit%% *}"; else state="done" note=${commit%% *}; fi ;;
+    esac
   fi
-  printf '%s\t%s\t%s\t%s\t%s\n' "$state" "$key" "$count" "${layer:--}" "$note"
+  printf '%s\t%s\t%s\t%s\t%s\n' "$state" "${key//$tab/ }" "$count" "${layer:--}" "$note"
 done

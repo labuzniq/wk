@@ -182,6 +182,18 @@ correction() {
   [[ "$output" == "correction-one-config-file: corrected in 3 sessions (cheapest layer: design); needs the user"* ]]
 }
 
+@test "a correction corrected again after its check is a gap that names the commit" {
+  mkdir -p knowledge-base/wiki/corrections
+  for name in 2026-01-01-demo-aaaa1111 2026-01-02-demo-bbbb2222 2026-01-09-demo-cccc3333; do
+    touch "knowledge-base/raw/sessions/$name.md"
+  done
+  printf -- '---\nlayer: check\nsources:\n  - raw/sessions/2026-01-01-demo-aaaa1111.md\n  - raw/sessions/2026-01-02-demo-bbbb2222.md\n  - raw/sessions/2026-01-09-demo-cccc3333.md\n---\n' \
+    > knowledge-base/wiki/corrections/uv-not-pip.md
+  GIT_COMMITTER_DATE="2026-01-04T12:00:00Z" git commit -q --allow-empty -m "test: uv, not pip" -m "Correction: uv-not-pip"
+  run "$kit/bin/wk" doctor
+  [[ "$output" == "correction-uv-not-pip: corrected again after $(git rev-parse --short HEAD), "*"make the check catch it"* ]]
+}
+
 @test "a correction seen in two sessions is no gap" {
   correction uv-not-pip check 2
   is "$(gaps)" ""

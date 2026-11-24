@@ -11,6 +11,6 @@ The **doctor** is `wk doctor`: it prints one line per **gap**, as `<check_id>: <
 4. Run `wk doctor` again. Completion: only "needs the user" gaps are left.
 5. Handle the user's request. When it is done, raise the "needs the user" gaps, one at a time:
    - `vision`, `vision_fresh`: offer to run the `vision` skill with them now.
-   - `correction-<key>`: show the record. On "yes", make the design change in a commit of its own whose message ends with the line `Correction: <key>`.
+   - `correction-<key>`: show the record. On "yes", make the design change in a commit of its own whose message ends with the line `Correction: <key>`. On "no", handle it as "skip".
    - `proposals`: show the proposal file. On "apply", load `writing-for-agents`, make the edit the proposal names, delete the proposal file. On "reject", delete the proposal file.
    - The user answers "skip" to any gap: add `<check_id> = "<their reason>"` under `[skip]` in `.workspace-kit.toml`.

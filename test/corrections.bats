@@ -66,7 +66,7 @@ waiting b-second 1 prose -"
   record uv-not-pip check s1 s2 s3
   rm knowledge-base/raw/sessions/s3.md
   run corrections
-  [[ "$output" == "broken uv-not-pip 2 check raw/sessions/s3.md is not in the vault;"* ]]
+  [[ "$output" == "broken uv-not-pip 2 check raw/sessions/s3.md is not a session summary in the vault;"* ]]
 }
 
 @test "a layer that is not one of the four makes the record broken" {
@@ -126,4 +126,67 @@ waiting b-second 1 prose -"
   run "$kit/bin/wk" corrections
   [ "$status" -eq 1 ]
   [[ "$output" == "wk corrections: "*"run it inside a project"* ]]
+}
+
+@test "two summaries of one resumed session count once" {
+  record uv-not-pip check 2026-01-01-demo-aaaa1111 2026-01-02-demo-aaaa1111 2026-01-03-demo-bbbb2222
+  is "$(corrections)" "waiting uv-not-pip 2 check -"
+}
+
+@test "a source path that leaves raw/sessions makes the record broken" {
+  record uv-not-pip check s1 s2 ../../wiki/overview
+  run corrections
+  [[ "$output" == "broken uv-not-pip 2 check raw/sessions/../../wiki/overview.md is not a session summary"* ]]
+}
+
+@test "sources written on one line make the record broken, and the line shows the form" {
+  record uv-not-pip check s1 s2 s3
+  printf -- '---\nlayer: check\nsources: [raw/sessions/s1.md, raw/sessions/s2.md, raw/sessions/s3.md]\n---\n' \
+    > knowledge-base/wiki/corrections/uv-not-pip.md
+  run corrections
+  [[ "$output" == "broken uv-not-pip 0 check the frontmatter lists no session summary; "*'`  - raw/sessions/<file>.md`'* ]]
+}
+
+@test "quoted values and Windows line ends are read like plain ones" {
+  record uv-not-pip check s1 s2 s3
+  printf -- '---\r\nlayer: "check"\r\nsources:\r\n  - "raw/sessions/s1.md"\r\n  - raw/sessions/s2.md\r\n  - raw/sessions/s3.md\r\n---\r\n' \
+    > knowledge-base/wiki/corrections/uv-not-pip.md
+  is "$(corrections)" "due uv-not-pip 3 check -"
+}
+
+@test "a tab in a file name does not shift the columns" {
+  record "a$(printf '\t')b" check s1
+  run corrections
+  [[ "$output" == "broken a b 1 check the file name must be"* ]]
+}
+
+@test "a session newer than the check's commit makes the correction due again, and the line names the commit" {
+  record uv-not-pip check 2026-01-01-demo-aaaa1111 2026-01-02-demo-bbbb2222 2026-01-03-demo-cccc3333
+  GIT_COMMITTER_DATE="2026-01-04T12:00:00Z" git commit -q --allow-empty -m "test: uv, not pip" -m "Correction: uv-not-pip"
+  sha=$(git rev-parse --short HEAD)
+  is "$(corrections)" "done uv-not-pip 3 check $sha"
+  record uv-not-pip check 2026-01-01-demo-aaaa1111 2026-01-02-demo-bbbb2222 2026-01-03-demo-cccc3333 2026-01-09-demo-dddd4444
+  is "$(corrections)" "due uv-not-pip 4 check after $sha"
+  GIT_COMMITTER_DATE="2026-01-10T12:00:00Z" git commit -q --allow-empty -m "test: catch pip in scripts too" -m "Correction: uv-not-pip"
+  is "$(corrections)" "done uv-not-pip 4 check $(git rev-parse --short HEAD)"
+}
+
+@test "several due records are matched to their own commits" {
+  record a-first check s1 s2 s3
+  record b-second prose s1 s2 s3
+  record c-third check s1 s2 s3
+  git commit -q --allow-empty -m "docs: b" -m "Correction: b-second"
+  is "$(corrections)" "due a-first 3 check -
+done b-second 3 prose $(git rev-parse --short HEAD)
+due c-third 3 check -"
+}
+
+@test "in a linked worktree the records of the primary checkout are counted, and a commit on its branch counts" {
+  record uv-not-pip check s1 s2 s3
+  git worktree add -q -b ticket "$HOME/projects/demo-ticket"
+  cd "$HOME/projects/demo-ticket"
+  is "$(corrections)" "due uv-not-pip 3 check -"
+  git commit -q --allow-empty -m "test: uv, not pip" -m "Correction: uv-not-pip"
+  cd "$project"
+  [[ "$(corrections)" == "done uv-not-pip 3 check "* ]]
 }

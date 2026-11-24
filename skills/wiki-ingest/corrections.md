@@ -4,7 +4,7 @@ A **correction** is something the user had to tell the agent to do differently. 
 
 For each correction in the session summary you just wrote:
 
-1. Read the title line of every record in `wiki/corrections/`. When one names the same mistake, whatever the words, add this summary to its `sources` and its evidence list, and set `updated`. Otherwise write a new record in this form, where `<key>` is the rule in a few lowercase words joined by dashes:
+1. Read the title line of every record in `wiki/corrections/`. When one names the same mistake, whatever the words, add this summary to its `sources` and its evidence list, and set `updated`. Otherwise write a new record in this form (create the folder when the vault has none), where `<key>` is the rule in a few lowercase words joined by dashes:
 
    ```
    ---
