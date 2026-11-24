@@ -183,12 +183,14 @@ AUTOMATIONS = {
         "--trigger", "daily", "--time", "07:30", "--missed-run-grace-minutes", "720",
         "--precheck", 'test -n "$(ls -A ' + QUEUE + ' 2>/dev/null)" || test -n "$(git -C {vault} status --porcelain -- raw 2>/dev/null)"',
         "--prompt", "Run the wiki-ingest skill on every queued session, then stop.",
+        "--extra-agent-args=--model sonnet",
     ],
-    "Wiki lint: {slug}": ["--trigger", "0 9 * * 6", "--prompt", "Run the wiki-lint skill, then stop."],
+    "Wiki lint: {slug}": ["--trigger", "0 9 * * 6", "--prompt", "Run the wiki-lint skill, then stop.", "--extra-agent-args=--model sonnet"],
     "Worktree cleanup: {slug}": [
         "--trigger", "daily", "--time", "08:00", "--missed-run-grace-minutes", "720",
         "--precheck", 'cd "{root}" && "{kit}/bin/wk" worktree-cleanup --dry-run | grep -q "^would remove"', "--precheck-timeout", "300",
         "--prompt", "Run `wk worktree-cleanup` in this folder once, print its output, then stop. Remove no worktree by hand.",
+        "--extra-agent-args=--model haiku",
     ],
 }
 

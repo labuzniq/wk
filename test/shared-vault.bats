@@ -59,7 +59,7 @@ session_start() {
   [ "$status" -eq 0 ]
   is "$(jq -c '.permissions' "$HOME/.claude/settings.json")" "{\"additionalDirectories\":[\"/elsewhere\",\"$vault\"],\"defaultMode\":\"plan\"}"
   is "$(jq -r '.[].name' "$ORCA_STUB/automations.json")" "Wiki lint: shared"
-  grep -qx -- "automations create --name Wiki lint: shared --trigger 0 10 \* \* 6 --prompt Run the wiki-lint skill, then stop. --provider claude --workspace path:$vault --fresh-session --enabled --json" "$ORCA_STUB/calls"
+  grep -qx -- "automations create --name Wiki lint: shared --trigger 0 10 \* \* 6 --prompt Run the wiki-lint skill, then stop. --provider claude --extra-agent-args=--model sonnet --workspace path:$vault --fresh-session --enabled --json" "$ORCA_STUB/calls"
   is "$(jq -r '.[].path' "$ORCA_STUB/repos.json")" "$vault"
 }
 

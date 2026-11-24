@@ -29,6 +29,9 @@ snapshot() {
   grep -qx 'slug = "demo"' .workspace-kit.toml
   is "$(cat "$state/repos/$(printf '%s' "$project" | shasum | cut -d' ' -f1)")" 'orca_repo_id = "repo-1"'
   is "$(jq -r '.[].name' "$ORCA_STUB/automations.json" | sort | paste -sd, -)" "Wiki ingest: demo,Wiki lint: demo,Worktree cleanup: demo"
+  grep "^automations create --name Wiki ingest: demo " "$ORCA_STUB/calls" | grep -q -- "--extra-agent-args=--model sonnet"
+  grep "^automations create --name Wiki lint: demo " "$ORCA_STUB/calls" | grep -q -- "--extra-agent-args=--model sonnet"
+  grep "^automations create --name Worktree cleanup: demo " "$ORCA_STUB/calls" | grep -q -- "--extra-agent-args=--model haiku"
 }
 
 @test "a second run changes nothing" {
