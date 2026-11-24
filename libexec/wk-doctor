@@ -25,7 +25,8 @@ gap() { skipped "$1" || echo "$1: $2"; }
 [ -n "$(manifest_value slug)" ] && [ -n "$(manifest_value type)" ] || gap manifest ".workspace-kit.toml lacks slug or type; run \`wk adopt\`"
 [ -f "$root/CLAUDE.md" ] || gap claude_md "no project CLAUDE.md; run \`wk adopt\`, then fill in purpose, commands and gotchas from the repo"
 grep -qs '^\[tasks\.setup\]' "$root/mise.toml" || gap mise "mise.toml has no setup task"
-[ -n "$(manifest_value orca_repo_id)" ] || gap orca_repo "repo is not registered in Orca; run \`wk adopt\`"
+[ -s "$state_dir/repos/$(path_key "$primary")" ] || gap orca_repo "this repo is not set up in your Orca on this Mac; run \`wk adopt\` (it keeps every existing file) and commit what it changed"
+[ "$root" != "$primary" ] || ! grep -q '^orca_repo_id' "$manifest" || gap shared_values ".workspace-kit.toml holds orca_repo_id, which is true for one person only; run \`wk adopt\` (it removes the line and keeps the id outside the repo) and commit the change"
 [ -f "$root/orca.yaml" ] && [ -f "$root/.worktreeinclude" ] || gap orca_files "orca.yaml or .worktreeinclude is missing; run \`wk adopt\`"
 grep -qs '^  setup:' "$root/orca.yaml" || gap orca_setup_hook "orca.yaml has no scripts.setup; add \`mise trust -y && mise run setup\`"
 # The stacks the manifest names, and the ones `wk adopt` would find in the repo today.
@@ -62,6 +63,7 @@ fi
 [ -f "$root/docs/agents/issue-tracker.md" ] || gap matt_setup "no docs/agents/issue-tracker.md; run \`wk adopt\`"
 [ ! -f "$root/docs/agents/issue-tracker.md" ] || grep -q '^## Orca workspaces' "$root/docs/agents/issue-tracker.md" || gap tracker "docs/agents/issue-tracker.md treats Orca workspaces as tickets; delete it and run \`wk adopt\`, so tickets are issues and a workspace is created only when work starts"
 [ ! -f "$primary/.workspace-kit.toml" ] || [ -f "$state_dir/automations/$(path_key "$primary")" ] || gap automations "the wiki automations are not created yet; run \`wk adopt\` in $primary"
+[ ! -f "$state_dir/automations/$(path_key "$primary")" ] || grep -q '^Worktree cleanup: ' "$state_dir/automations/$(path_key "$primary")" || gap cleanup_automation "no daily worktree cleanup automation for this project; run \`wk adopt\` in $primary"
 [ -f "$(vault_dir)/wiki/overview.md" ] || gap vault_page "no $(manifest_value vault)/wiki/overview.md in the vault; run \`wk adopt\`"
 
 for skill in "$HOME/.agents/skills"/*/; do
@@ -70,6 +72,8 @@ for skill in "$HOME/.agents/skills"/*/; do
 done
 
 kit_dir=$(wk_config kit)
+grep -qsxF "@${kit_dir// /\\ }/claude/CLAUDE.md" "$HOME/.claude/CLAUDE.md" \
+  || gap instructions "$HOME/.claude/CLAUDE.md does not import the kit's shared instructions; run \`$kit_dir/install.sh\` (it keeps your own text and backs the file up)"
 skills_lock="$kit_dir/skills.lock"
 if locked_skills=$(jq -r '.skills | keys | join(" ")' "$skills_lock" 2>/dev/null); then
   # shellcheck disable=SC2086 # one skill name per word; skills-sync allows no other characters in a name

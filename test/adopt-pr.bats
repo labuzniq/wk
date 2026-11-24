@@ -143,6 +143,6 @@ setup() {
   git merge -q --no-ff -m "merge capsule" test/workspace-kit-capsule
   [[ "$("$kit/bin/wk" doctor)" == *"automations: the wiki automations are not created yet"* ]]
   "$kit/libexec/wk-adopt" > /dev/null
-  is "$(jq -r '.[].name' "$ORCA_STUB/automations.json" | sort | paste -sd, -)" "Wiki ingest: legacy,Wiki lint: legacy"
+  is "$(jq -r '.[].name' "$ORCA_STUB/automations.json" | sort | paste -sd, -)" "Wiki ingest: legacy,Wiki lint: legacy,Worktree cleanup: legacy"
   [[ "$("$kit/bin/wk" doctor)" != *"automations"* ]]
 }
