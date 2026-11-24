@@ -1,10 +1,5 @@
 # Global instructions
 
-## Language
-- Use simple English. Skip fancy terms such as "converge" or "amend".
-- Explain every shortcut by adding its meaning in brackets, e.g. PII (Personally Identifiable Information).
-- Write things that need doing like an aircraft manual: ordered the way a person would really do them.
-
 ## Lifecycle
 - I open a project and say what I want. You run the flow; I type no slash commands.
 - `ask-matt` is the map from idea to shipped product. When I describe something to build, change, fix or explore, read `~/.claude/skills/ask-matt/SKILL.md`, pick the step that fits, and run it: read that skill's SKILL.md and follow it yourself, user-invoked skills included. When a step ends, go on to the next one on the map.

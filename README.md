@@ -26,7 +26,9 @@ git clone https://github.com/labuzniq/wk ~/.workspace-kit
 
 The argument is the folder your projects live in. The installer can be run again at any time; a second run changes nothing.
 
-**It changes your Claude Code setup.** It replaces `~/.claude/CLAUDE.md` with a link to [`claude/CLAUDE.md`](claude/CLAUDE.md), merges hooks and permission rules into `~/.claude/settings.json`, installs the skills in [`skills.txt`](skills.txt) at their pinned commits and the agents in [`agents/agents.toml`](agents/agents.toml). Both files are backed up to `~/.claude/backup/<timestamp>/` first. Read `claude/CLAUDE.md` and make it yours before installing.
+**It changes your Claude Code setup.** It adds one line to `~/.claude/CLAUDE.md` that imports the shared instructions in [`claude/CLAUDE.md`](claude/CLAUDE.md), merges hooks and permission rules into `~/.claude/settings.json`, installs the skills in [`skills.txt`](skills.txt) at their pinned commits and the agents in [`agents/agents.toml`](agents/agents.toml). Both files are backed up to `~/.claude/backup/<timestamp>/` before they change.
+
+`~/.claude/CLAUDE.md` stays yours: the installer keeps your text and never replaces the file, so your own rules (language, tone, habits) go there, below the import line. The shared rules (Orca, Git, the review gate) stay in the kit and reach everyone with `git pull`. An install from before this split (a link to `claude/CLAUDE.md`) moves to the new layout on the next installer run. Run the installer right after the `git pull` that brings the split: until then the lines that became personal (the Language section) are not loaded, and `wk doctor` reports an `instructions` gap.
 
 Then do the three manual Orca settings in [`docs/orca-settings.md`](docs/orca-settings.md).
 
@@ -71,7 +73,7 @@ docs/            verified facts and the manual Orca checklist
 ## What a project gets
 
 ```
-.workspace-kit.toml   manifest: slug, stack, Orca repo id, vault path, skipped checks
+.workspace-kit.toml   manifest: slug, stack, vault path, skipped checks
 mise.toml             tools and tasks: setup, test, lint
 orca.yaml             setup script Orca runs in each new worktree
 .worktreeinclude      local files Orca copies into new worktrees
@@ -79,6 +81,10 @@ docs/agents/          where tickets, triage labels and domain docs live
 docs/specs/           specs, one section per ticket
 knowledge-base/       the vault: raw/ sources and wiki/ pages
 ```
+
+## Sharing a project
+
+Everything the capsule commits works for everyone who clones the repo. What is true for one person only stays on their Mac: the Orca repo id in `~/.local/state/workspace-kit/repos/`, the vault permission in the gitignored `.claude/settings.local.json`, and the two wiki automations in their own Orca. A second person installs the kit, clones the repo and opens it: the first session reports the `orca_repo` and `automations` gaps, and the agent fixes both with `wk adopt`, which changes no committed file.
 
 ## Good to know
 

@@ -155,6 +155,19 @@ This replaces "in an existing repo with history it asks once" from the change of
 - confirmed with stand-ins for `orca` and `gh`. The Orca and gh calls it makes (`orca worktree create --repo --name --no-parent --setup skip --comment --json`, `orca worktree set --pr --workspace-status`, `gh pr create`, `gh pr view --json state`, `gh pr list --head`, `gh repo view --json owner`, `gh api user`) were each used by hand on this Mac the same day or are read in `--help`.
 - open: one whole run of `wk adopt-pr` against a real repo on GitHub.
 
+## A second person (2026-11-23)
+
+- docs: a `CLAUDE.md` file imports another file with a line `@path/to/file`. Relative and absolute paths are allowed; a relative path is read from the folder of the file that holds the import. A space in the path needs a backslash before it. Imports nest up to four levels, and an `@` inside a code span or a code block is no import. Source: https://code.claude.com/docs/en/memory, "Import additional files".
+- docs: imports in the user-level `~/.claude/CLAUDE.md` load without an approval dialog (except in Cowork sessions); the dialog is only for a project file that imports a file outside the project. Same page.
+- open: the import in `~/.claude/CLAUDE.md` was not seen working in a real session. A run with a throwaway `CLAUDE_CONFIG_DIR` stops at "Not logged in", and the real `~/.claude` is out of bounds for a ticket. To check after the next installer run: start a session and ask which sections the global instructions hold.
+- open (not in the docs): what Claude Code does when the imported file is missing, and where a relative import is read from when `CLAUDE.md` is a link. The kit avoids both: the import is an absolute path, `~/.claude/CLAUDE.md` is a real file, and `wk doctor` has an `instructions` check for the import line.
+- confirmed: `orca repo show --repo path:<primary checkout> --json` finds the repo on this Mac, and answers `repo_not_found` for the path of a worktree. The tracker doc now names the repo by `path:`, so no committed file needs the Orca repo id.
+- `install.sh`: `~/.claude/CLAUDE.md` is the person's own file with one import line for `claude/CLAUDE.md`. A missing file is written, a file without the line gets it as its first line (backup first, text kept), and a link of the old layout becomes a real file that also holds the Language section the kit used to ship (`claude/personal-before-split.md`). A missing `~/.claude/settings.json` no longer stops the installer.
+- `wk adopt` saves the Orca repo id in `~/.local/state/workspace-kit/repos/<checksum of the primary checkout's path>`, and the `orca_repo` check reads that file (no Orca call). This replaces the Phase 5 line "`orca_repo` passes when `orca_repo_id` is set in `.workspace-kit.toml`".
+- A capsule from before this change still has `orca_repo_id` in its manifest. The doctor and the hooks ignore the line. Each person gets the `orca_repo` gap once per project, and the agent fixes it with `wk adopt`. In the primary checkout `wk adopt` also removes the line, swaps the two places in `docs/agents/issue-tracker.md` that name the id, and prints both; the `shared_values` check asks for this in the primary checkout only, so a ticket's worktree gets no unrelated change.
+- `wk adopt` takes the slug from a manifest that is already there. Before, a clone in a folder of another name got automations and a session queue under the folder's name. Found by the new test.
+- confirmed: `test/install.bats` runs a copy of `install.sh` in a throwaway home with stand-ins for `wk`, `orca` and `npx`: a fresh install, a second run, an install of the old layout, and a file the person wrote themselves. The real installer was not run on this Mac.
+
 ## Worktree cleanup (2026-11-23)
 
 Orca 1.4.271. Nothing was removed on this Mac for these checks: `orca workspace cleanup run` was not run, and `wk worktree-cleanup` ran only in the tests, against a stand-in for `orca`.

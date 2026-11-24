@@ -54,9 +54,14 @@ gaps() {
   is "$(gaps)" "mise"
 }
 
-@test "a manifest without an Orca repo id is a gap" {
-  sed -i '' '/^orca_repo_id/d' .workspace-kit.toml
+@test "a repo this person has not set up in their Orca is a gap" {
+  rm -r "$state/repos"
   is "$(gaps)" "orca_repo"
+}
+
+@test "global instructions that do not import the kit's shared part are a gap" {
+  echo "my own rules" > "$HOME/.claude/CLAUDE.md"
+  is "$(gaps)" "instructions"
 }
 
 @test "a missing .worktreeinclude is a gap" {
