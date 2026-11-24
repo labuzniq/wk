@@ -17,7 +17,7 @@ tab=$'\t'
 fail() { echo "wk kit-correction: $1" >&2; exit 1; }
 vault=$(wk_config shared_vault 2>/dev/null) && [ -d "$vault" ] || fail "there is no shared vault yet; run \`wk shared-vault\`"
 records="$vault/wiki/corrections"
-kit=$(wk_config kit)
+kit=$(wk_config kit) || exit 1
 
 # projects_of <record>: the layer on the first line, then each project id of the frontmatter's `projects:` list once.
 projects_of() {
@@ -46,10 +46,11 @@ list() {
     layer=${parsed%%"$newline"*}
     ids="" count=0 note="-"
     [ "$parsed" = "$layer" ] || ids=${parsed#*"$newline"}
-    for id in $ids; do
+    while IFS= read -r id; do
+      [ -n "$id" ] || continue
       [[ "$id" =~ ^[0-9a-f]{12}$ ]] || { note="$id is not a project id; list only ids that \`wk kit-correction add\` wrote"; break; }
       count=$((count + 1))
-    done
+    done <<<"$ids"
     state=waiting
     [ "$count" -lt "$due_at" ] || state=due
     if [[ ! "$key" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
@@ -61,7 +62,7 @@ list() {
     elif [[ ! "$layer" =~ ^(design|check|proof|prose)$ ]]; then
       state=broken note="layer must be design, check, proof or prose; set \`layer:\` to one of these words in the record's frontmatter"
     elif [ "$state" = due ]; then
-      [ -n "$checked" ] || checked="$newline$(correction_commits "$kit")$newline"
+      [ -n "$checked" ] || checked="$newline$(correction_commits "$kit" HEAD)$newline"
       case "$checked" in
         *"$newline$key "*)
           commit=${checked#*"$newline$key "}
@@ -87,22 +88,38 @@ check_key() { [[ "${1:-}" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] || fail "'${1:-}' is no
 # add <key>: this project, by an id that names nothing, joins the record's `projects:` list.
 add() {
   check_key "$1"
-  local record="$records/$1.md" id count
+  local record="$records/$1.md" id first tries=0 count
   # shellcheck source=../lib/project.sh
   . "$lib/project.sh" && [ -f "$manifest" ] || fail "no .workspace-kit.toml here; run it inside a project"
   [ -f "$record" ] || fail "no shared record $record; write it first, the way \`corrections.md\` in the \`wiki-ingest\` skill says"
+  first=$(git -C "$primary" rev-list --max-parents=0 HEAD 2>/dev/null | sort | head -1) || true
+  [ -n "$first" ] || fail "$primary has no commit yet, and its first commit is how the project is counted; commit, then run this again"
   # The first commit and the slug stand for the project: every clone shares them, and a checksum of them names nothing.
-  id=$( { git -C "$primary" rev-list --max-parents=0 HEAD | sort | head -1; manifest_value slug; } | shasum -a 256 | cut -c1-12)
-  if printf '%s\n' "$(projects_of "$record")" | tail -n +2 | grep -qx "$id"; then
-    echo "kept    this project in $record"
-    return
-  fi
+  id=$(printf '%s\n%s\n' "$first" "$(manifest_value slug)" | shasum -a 256 | cut -c1-12)
+  # Ingests of other projects write the same record on the same morning: one writer at a time.
+  lock="$record.lock"
+  until mkdir "$lock" 2>/dev/null; do
+    tries=$((tries + 1))
+    [ "$tries" -lt 100 ] || fail "$lock has been there for 10 seconds; when no ingest is running, remove it and run this again"
+    sleep 0.1
+  done
+  trap 'rmdir "$lock" 2>/dev/null || true' EXIT
+  case "$newline$(projects_of "$record")$newline" in
+    *"$newline$id$newline"*)
+      echo "kept    this project in $record"
+      return
+      ;;
+  esac
   awk -v id="$id" '
     NR == 1 && $0 == "---" { inside = 1; print; next }
-    inside && !done && /^projects:/ { print; print "  - " id; done = 1; next }
+    inside && !done && /^projects:[[:space:]]*$/ { print; print "  - " id; done = 1; next }
     inside && !done && $0 == "---" { print "projects:"; print "  - " id; done = 1; inside = 0 }
     { print }' "$record" > "$record.new"
   mv "$record.new" "$record"
+  case "$newline$(projects_of "$record")$newline" in
+    *"$newline$id$newline"*) ;;
+    *) fail "could not add this project to $record; its frontmatter must start on the first line with --- and hold \`projects:\` as a list, one \`  - <id>\` line each" ;;
+  esac
   count=$(list "$1" | cut -f3)
   echo "added this project to $record; it is seen in $count project$([ "$count" = 1 ] || echo s)"
 }
@@ -113,41 +130,61 @@ start() {
   check_key "$1"
   due "$1"
   local origin folder
-  origin=$(origin_of_kit)
-  folder=$(mktemp -d "${TMPDIR:-/tmp}/wk-kit-correction.XXXXXX")/kit
-  git clone -q "$origin" "$folder" || fail "could not clone $origin; check the network and that \`git clone $origin\` works"
-  git -C "$folder" switch -q -c "correction/$1"
-  echo "cloned the kit into $folder on the branch correction/$1; write the fix there, commit it once with the last line \`Correction: $1\`, then run \`wk kit-correction offer $1\` in that folder"
+  origin=$(origin_of_kit) || exit 1
+  folder=$(mktemp -d "${TMPDIR:-/tmp}/wk-kit-correction.XXXXXX")
+  git clone -q -- "$origin" "$folder/kit" || { rm -rf "$folder"; fail "could not clone $origin; check the network and that \`git clone $origin\` works"; }
+  git -C "$folder/kit" switch -q -c "correction/$1"
+  echo "cloned the kit into $folder/kit on the branch correction/$1; write the fix there, commit it once with the last line \`Correction: $1\`, then run \`wk kit-correction offer $1\` in that folder"
 }
 
 # third_party <path> <clone>: a line naming the pinned skill or agent whose text the path is, if it is one.
 third_party() {
-  local path="$1" clone="$2" name
+  local path="$1" clone="$2" name names
   case "$path" in
     skills/*/*)
       name=${path#skills/}
       name=${name%%/*}
-      awk '{ for (i = 2; i <= NF; i++) print $i }' "$clone/skills.txt" | grep -qxF "$name" && echo "skill $name"
+      names=$(awk '{ for (i = 2; i <= NF; i++) print $i }' "$clone/skills.txt") || fail "could not read $clone/skills.txt"
+      case "$newline$names$newline" in *"$newline$name$newline"*) echo "skill $name" ;; esac
       ;;
     agents/*.md)
       name=${path#agents/}
       name=${name%.md}
-      sed -n '/^\[agents\]/,/^\[/s/^\([A-Za-z0-9_-]*\) *=.*/\1/p' "$clone/agents/agents.toml" | grep -qxF "$name" && echo "agent $name"
+      names=$(sed -n '/^\[agents\]/,/^\[/s/^\([A-Za-z0-9_-]*\) *=.*/\1/p' "$clone/agents/agents.toml") || fail "could not read $clone/agents/agents.toml"
+      case "$newline$names$newline" in *"$newline$name$newline"*) echo "agent $name" ;; esac
       ;;
   esac
-  return 0
+}
+
+# fenced <text>: the text in a code fence longer than any run of backticks inside it, so the text cannot close the fence.
+fenced() {
+  local longest fence='```'
+  longest=$(printf '%s\n' "$1" | grep -o '`*' | awk '{ if (length > n) n = length } END { print n + 0 }')
+  while [ "${#fence}" -le "$longest" ]; do fence="$fence\`"; done
+  printf '%stext\n%s\n%s\n' "$fence" "$1" "$fence"
 }
 
 offer() {
   check_key "$1"
-  local key="$1" clone base count message path hit kind name branch="correction/$1" head pushed title layer projects body url
+  local key="$1" clone origin base count message path hit kind name branch="correction/$1" head pushed title layer projects url
   if [ -s "$offers/$key" ]; then
     echo "kit-correction: '$key' was offered before as $(cat "$offers/$key"); nothing to do"
     return
   fi
   due "$key"
-  clone=$(git rev-parse --show-toplevel 2>/dev/null) && [ "$(git -C "$clone" remote get-url origin 2>/dev/null)" = "$(origin_of_kit)" ] \
+  origin=$(origin_of_kit) || exit 1
+  clone=$(git rev-parse --show-toplevel 2>/dev/null) && [ "$(git -C "$clone" remote get-url origin 2>/dev/null)" = "$origin" ] \
     || fail "$PWD is not a clone of the kit; run \`wk kit-correction start $key\` and run this in the folder it prints"
+  # An offer from another Mac, or one whose record was lost, is found on GitHub: a closed one is a "no".
+  url=$(cd "$clone" && gh pr list --state all --limit 1000 --json url,state,headRefName) \
+    || fail "\`gh pr list\` failed, so it is not known whether '$key' was offered before; check that gh is logged in, and run this again"
+  url=$(jq -r --arg branch "$branch" '[.[] | select(.headRefName == $branch)][0] | .url // empty' <<<"$url")
+  if [ -n "$url" ]; then
+    mkdir -p "$offers"
+    echo "$url" > "$offers/$key"
+    echo "kit-correction: '$key' was offered before as $url; nothing to do"
+    return
+  fi
   [ -z "$(git -C "$clone" status --porcelain)" ] || fail "$clone has changes that are not committed; commit them into the fix, or remove them"
   git -C "$clone" fetch -q origin || fail "could not fetch from the kit's origin; check the network"
   base=$(git -C "$clone" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null) || fail "the clone does not know the kit's main branch; run \`git -C $clone remote set-head origin --auto\`"
@@ -158,33 +195,42 @@ offer() {
   [ "$(printf '%s\n' "$message" | sed '/^[[:space:]]*$/d' | tail -1)" = "Correction: $key" ] \
     || fail "the last line of the commit message must be \`Correction: $key\`; that line is how \`wk kit-correction\` knows the fix landed. Run \`git commit --amend\` and add it"
   while IFS= read -r path; do
-    hit=$(third_party "$path" "$clone")
+    [ -n "$path" ] || continue
+    hit=$(third_party "$path" "$clone") || exit 1
     [ -n "$hit" ] || continue
     kind=${hit%% *} name=${hit#* }
     fail "$path is text of the third-party $kind '$name'; the kit holds no copy of it. Write the fix as a recorded patch, patches/${kind}s/$name.patch (\"Good to know\" in README.md says how), and commit again"
   done <<<"$(git -C "$clone" diff --name-only "origin/$base" HEAD)"
 
   head=$(git -C "$clone" rev-parse HEAD)
-  pushed=$(git -C "$clone" ls-remote --heads origin "$branch" | cut -f1)
-  if [ -z "$pushed" ]; then
-    git -C "$clone" push -q origin "HEAD:refs/heads/$branch" || fail "the push of $branch failed; nothing was offered"
-  elif [ "$pushed" != "$head" ]; then
-    fail "the kit's origin already has a branch $branch with another commit; look at it, delete it with \`git push origin --delete $branch\` when it is not wanted, and offer again"
-  fi
-
-  title=$(sed -n 's/^# //p' "$records/$key.md" | head -1)
+  title=$(awk 'NR == 1 && $0 == "---" { inside = 1; next } inside && $0 == "---" { inside = 0; next } !inside && sub(/^# /, "") { print; exit }' "$records/$key.md")
   layer=$(list "$key" | cut -f4)
   projects=$(list "$key" | cut -f3)
-  body=$(mktemp "${TMPDIR:-/tmp}/wk-kit-correction-body.XXXXXX")
+  scratch=$(mktemp -d "${TMPDIR:-/tmp}/wk-kit-correction-offer.XXXXXX")
+  trap 'rm -rf "$scratch"' EXIT
   {
     printf '## Summary\n\nA correction seen in %s projects, offered to the kit by `wk kit-correction offer`.\n\n' "$projects"
-    printf -- '- **The correction:** %s\n- **Cheapest layer:** %s\n- **Record:** `wiki/corrections/%s.md` in the shared vault\n\n' "$title" "$layer" "$key"
-    printf '## Evidence\n\nThe commit message, with the check going red on the old mistake:\n\n````text\n%s\n````\n\n' "$(git -C "$clone" log -1 --format=%b)"
+    printf -- '- **The correction:** %s\n- **Cheapest layer:** %s\n- **Record:** `wiki/corrections/%s.md` in the shared vault\n\n' "${title//@/}" "$layer" "$key"
+    printf '## Evidence\n\nThe commit message, with the check going red on the old mistake:\n\n%s\n\n' "$(fenced "$(git -C "$clone" log -1 --format=%b)")"
     printf '## Merge Danger\n\n**Door:** two-way\n**Blast Radius:** kit\n\nOne commit, `%s`. To undo it: close this pull request; after the merge, run `gh pr revert` on it.\n' "${head:0:7}"
-  } > "$body"
-  url=$(cd "$clone" && gh pr create --base "$base" --head "$branch" --title "$(git -C "$clone" log -1 --format=%s)" --body-file "$body" | tail -1) \
-    || { rm -f "$body"; fail "the branch $branch is pushed, but \`gh pr create\` failed; run \`wk kit-correction offer $key\` here again"; }
-  rm -f "$body"
+  } > "$scratch/body.md"
+  # What goes to GitHub passes the shared vault's check for private details first.
+  mkdir "$scratch/public"
+  cp "$scratch/body.md" "$scratch/public/"
+  git -C "$clone" log -1 --format=%B > "$scratch/public/commit.txt"
+  git -C "$clone" diff "origin/$base" HEAD > "$scratch/public/diff.txt"
+  hit=$("$(dirname "$0")/wk-shared-vault" check "$scratch/public" 2>/dev/null) \
+    || fail "the commit or the pull request text names a project's private details, and the pull request is read by anyone who can see the kit; reword each place, \`git commit --amend\`, and offer again:$newline${hit//$scratch\/public\//}"
+
+  pushed=$(git -C "$clone" ls-remote --heads "$origin" "$branch" | cut -f1) || fail "could not reach $origin; check the network"
+  if [ -z "$pushed" ]; then
+    git -C "$clone" push -q "$origin" "HEAD:refs/heads/$branch" || fail "the push of $branch failed; nothing was offered"
+  elif [ "$pushed" != "$head" ]; then
+    fail "the kit's origin already has a branch $branch with another commit and no pull request; look at it, delete it with \`git push origin --delete $branch\` when it is not wanted, and offer again"
+  fi
+  url=$(cd "$clone" && gh pr create --base "$base" --head "$branch" --title "$(git -C "$clone" log -1 --format=%s)" --body-file "$scratch/body.md" | tail -1) \
+    || fail "the branch $branch is pushed, but \`gh pr create\` failed; run \`wk kit-correction offer $key\` here again"
+  [ -n "$url" ] || fail "\`gh pr create\` printed no address; run \`wk kit-correction offer $key\` here again"
   mkdir -p "$offers"
   echo "$url" > "$offers/$key"
   echo "kit-correction: offered $url for '$key', one commit (${head:0:7}); to undo it, close the pull request, or after the merge run \`gh pr revert $url\`"

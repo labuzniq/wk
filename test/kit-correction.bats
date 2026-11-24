@@ -72,19 +72,19 @@ clone_with_fix() {
 
 @test "a correction seen in two projects is waiting, and the same project counts once" {
   record uv-not-pip
-  seen_in uv-not-pip one two one
+  seen_in uv-not-pip zeta-one zeta-two zeta-one
   is "$(corrections)" "waiting uv-not-pip 2 check -"
 }
 
 @test "a correction seen in three projects is due" {
   record uv-not-pip
-  seen_in uv-not-pip one two three
+  seen_in uv-not-pip zeta-one zeta-two zeta-three
   is "$(corrections)" "due uv-not-pip 3 check -"
 }
 
 @test "adding a project prints what it did, and a second run keeps it" {
   record uv-not-pip
-  project one
+  project zeta-one
   run "$kit/bin/wk" kit-correction add uv-not-pip
   [ "$status" -eq 0 ]
   has "$output" "added this project to $records/uv-not-pip.md; it is seen in 1 project"
@@ -107,15 +107,15 @@ clone_with_fix() {
 
 @test "a clone of the same project counts as the same project" {
   record uv-not-pip
-  seen_in uv-not-pip one
-  git clone -q "$HOME/projects/one" "$HOME/projects/one-copy"
-  cd "$HOME/projects/one-copy"
+  seen_in uv-not-pip zeta-one
+  git clone -q "$HOME/projects/zeta-one" "$HOME/projects/zeta-one-copy"
+  cd "$HOME/projects/zeta-one-copy"
   run "$kit/bin/wk" kit-correction add uv-not-pip
   has "$output" "kept"
 }
 
 @test "adding to a record that does not exist fails and says how to write it" {
-  project one
+  project zeta-one
   run "$kit/bin/wk" kit-correction add uv-not-pip
   [ "$status" -eq 1 ]
   has "$output" "no shared record $records/uv-not-pip.md"
@@ -138,7 +138,7 @@ clone_with_fix() {
 r '"$HOME/frag"'
 }' "$records/bad-id.md"
   record bad-layer hook
-  seen_in bad-layer one
+  seen_in bad-layer zeta-one
   run corrections
   has "$output" "broken bad-id 0 check acme-shop is not a project id"
   has "$output" "broken bad-layer 1 hook layer must be design, check, proof or prose"
@@ -148,9 +148,9 @@ r '"$HOME/frag"'
 @test "the doctor shows a due correction in every project, and a waiting one nowhere" {
   record uv-not-pip
   record waits
-  seen_in uv-not-pip one two three
-  seen_in waits one
-  project four
+  seen_in uv-not-pip zeta-one zeta-two zeta-three
+  seen_in waits zeta-one
+  project zeta-four
   run "$kit/bin/wk" doctor
   has "$output" "kit-correction-uv-not-pip: seen in 3 projects (cheapest layer: check); offer the fix to the kit the way \`kit-correction.md\` in the \`project-setup\` skill says. Record: $records/uv-not-pip.md"
   lacks "$output" "kit-correction-waits"
@@ -158,7 +158,7 @@ r '"$HOME/frag"'
 
 @test "start refuses a correction that is not due" {
   record uv-not-pip
-  seen_in uv-not-pip one two
+  seen_in uv-not-pip zeta-one zeta-two
   run "$kit/bin/wk" kit-correction start uv-not-pip
   [ "$status" -eq 1 ]
   has "$output" "'uv-not-pip' is waiting, not due"
@@ -166,7 +166,7 @@ r '"$HOME/frag"'
 
 @test "start clones the kit on a branch of its own and leaves the installed kit as it is" {
   record uv-not-pip
-  seen_in uv-not-pip one two three
+  seen_in uv-not-pip zeta-one zeta-two zeta-three
   before=$(git -C "$HOME/kit" status --porcelain; git -C "$HOME/kit" rev-parse HEAD; git -C "$HOME/kit" branch --show-current)
   clone_with_fix uv-not-pip
   is "$(git -C "$clone" branch --show-current)" "correction/uv-not-pip"
@@ -176,7 +176,7 @@ r '"$HOME/frag"'
 
 @test "offer pushes the one commit and opens a pull request, reported in one line with the way to undo it" {
   record uv-not-pip
-  seen_in uv-not-pip one two three
+  seen_in uv-not-pip zeta-one zeta-two zeta-three
   clone_with_fix uv-not-pip
   run "$kit/bin/wk" kit-correction offer uv-not-pip
   [ "$status" -eq 0 ]
@@ -196,7 +196,7 @@ r '"$HOME/frag"'
 
 @test "an offered correction leaves the doctor, and a second offer changes nothing" {
   record uv-not-pip
-  seen_in uv-not-pip one two three
+  seen_in uv-not-pip zeta-one zeta-two zeta-three
   clone_with_fix uv-not-pip
   "$kit/bin/wk" kit-correction offer uv-not-pip > /dev/null
   calls=$(cat "$GH_STUB/calls")
@@ -204,32 +204,32 @@ r '"$HOME/frag"'
   [ "$status" -eq 0 ]
   has "$output" "was offered before as https://github.com/test/kit/pull/1; nothing to do"
   is "$(cat "$GH_STUB/calls")" "$calls"
-  cd "$HOME/projects/one"
+  cd "$HOME/projects/zeta-one"
   lacks "$("$kit/bin/wk" doctor)" "kit-correction-uv-not-pip"
 }
 
 @test "a merged fix in the kit's history makes the correction done" {
   record uv-not-pip
-  seen_in uv-not-pip one two three
+  seen_in uv-not-pip zeta-one zeta-two zeta-three
   git -C "$HOME/kit" commit -q --allow-empty -m "fix: use uv (#9)" -m "Correction: uv-not-pip"
   is "$(corrections)" "done uv-not-pip 3 check $(git -C "$HOME/kit" rev-parse --short HEAD)"
 }
 
 @test "offer refuses two commits, and pushes nothing" {
   record uv-not-pip
-  seen_in uv-not-pip one two three
+  seen_in uv-not-pip zeta-one zeta-two zeta-three
   clone_with_fix uv-not-pip
   git commit -q --allow-empty -m "fix: more"
   run "$kit/bin/wk" kit-correction offer uv-not-pip
   [ "$status" -eq 1 ]
   has "$output" "holds 2 commits over origin/main; the fix is one commit of its own"
   is "$(git -C "$origin" branch --list 'correction/*')" ""
-  is "$(cat "$GH_STUB/calls")" ""
+  lacks "$(cat "$GH_STUB/calls")" "pr create"
 }
 
 @test "offer refuses a commit without the key's line" {
   record uv-not-pip
-  seen_in uv-not-pip one two three
+  seen_in uv-not-pip zeta-one zeta-two zeta-three
   clone_with_fix uv-not-pip
   git commit -q --amend -m "fix: use uv, not pip"
   run "$kit/bin/wk" kit-correction offer uv-not-pip
@@ -239,7 +239,7 @@ r '"$HOME/frag"'
 
 @test "offer refuses a copy of a third-party skill's or agent's text and names the recorded patch instead" {
   record uv-not-pip
-  seen_in uv-not-pip one two three
+  seen_in uv-not-pip zeta-one zeta-two zeta-three
   clone_with_fix uv-not-pip skills/beta/SKILL.md
   run "$kit/bin/wk" kit-correction offer uv-not-pip
   [ "$status" -eq 1 ]
@@ -253,12 +253,12 @@ r '"$HOME/frag"'
   [ "$status" -eq 1 ]
   has "$output" "agents/reviewer.md is text of the third-party agent 'reviewer'"
   has "$output" "patches/agents/reviewer.patch"
-  is "$(cat "$GH_STUB/calls")" ""
+  lacks "$(cat "$GH_STUB/calls")" "pr create"
 }
 
 @test "a recorded patch for a third-party skill and an edit of a kit skill are offered" {
   record uv-not-pip
-  seen_in uv-not-pip one two three
+  seen_in uv-not-pip zeta-one zeta-two zeta-three
   clone_with_fix uv-not-pip patches/skills/beta.patch
   echo "- step" >> skills/wiki-ingest/SKILL.md
   git add -A
@@ -270,8 +270,8 @@ r '"$HOME/frag"'
 
 @test "offer refuses a folder that is not a clone of the kit" {
   record uv-not-pip
-  seen_in uv-not-pip one two three
-  cd "$HOME/projects/one"
+  seen_in uv-not-pip zeta-one zeta-two zeta-three
+  cd "$HOME/projects/zeta-one"
   run "$kit/bin/wk" kit-correction offer uv-not-pip
   [ "$status" -eq 1 ]
   has "$output" "is not a clone of the kit"
@@ -279,7 +279,7 @@ r '"$HOME/frag"'
 
 @test "a failed pull request can be offered again from the same clone" {
   record uv-not-pip
-  seen_in uv-not-pip one two three
+  seen_in uv-not-pip zeta-one zeta-two zeta-three
   clone_with_fix uv-not-pip
   touch "$GH_STUB/fail-create"
   run "$kit/bin/wk" kit-correction offer uv-not-pip
@@ -288,4 +288,48 @@ r '"$HOME/frag"'
   run "$kit/bin/wk" kit-correction offer uv-not-pip
   [ "$status" -eq 0 ]
   has "$output" "kit-correction: offered"
+}
+
+@test "a pull request opened from another Mac, or closed, counts as offered and nothing is pushed" {
+  record uv-not-pip
+  seen_in uv-not-pip zeta-one zeta-two zeta-three
+  clone_with_fix uv-not-pip
+  echo '[{"url": "https://github.com/test/kit/pull/4", "state": "CLOSED", "headRefName": "correction/uv-not-pip"}]' > "$GH_STUB/prs.json"
+  run "$kit/bin/wk" kit-correction offer uv-not-pip
+  [ "$status" -eq 0 ]
+  is "$output" "kit-correction: 'uv-not-pip' was offered before as https://github.com/test/kit/pull/4; nothing to do"
+  is "$(git -C "$origin" branch --list 'correction/*')" ""
+  lacks "$(cat "$GH_STUB/calls")" "pr create"
+  is "$(corrections)" "offered uv-not-pip 3 check https://github.com/test/kit/pull/4"
+}
+
+@test "a fix only on a branch of the installed kit, such as a closed pull request's, is not done" {
+  record uv-not-pip
+  seen_in uv-not-pip zeta-one zeta-two zeta-three
+  git -C "$HOME/kit" switch -q -c correction/uv-not-pip
+  git -C "$HOME/kit" commit -q --allow-empty -m "fix: use uv" -m "Correction: uv-not-pip"
+  git -C "$HOME/kit" switch -q main
+  is "$(corrections)" "due uv-not-pip 3 check -"
+}
+
+@test "a commit that names a project is refused before anything reaches GitHub" {
+  record uv-not-pip
+  seen_in uv-not-pip acme-shop zeta-two zeta-three
+  clone_with_fix uv-not-pip
+  git commit -q --amend -m "fix: use uv, not pip" -m "Seen in acme-shop at $HOME/projects/acme-shop." -m "Correction: uv-not-pip"
+  run "$kit/bin/wk" kit-correction offer uv-not-pip
+  [ "$status" -eq 1 ]
+  has "$output" "names a project's private details"
+  has "$output" "commit.txt:3: names the project 'acme-shop'"
+  has "$output" "holds a path in the home folder"
+  is "$(git -C "$origin" branch --list 'correction/*')" ""
+  lacks "$(cat "$GH_STUB/calls")" "pr create"
+}
+
+@test "a record without frontmatter is not reported as added" {
+  printf '# Use uv, not pip\n' > "$records/uv-not-pip.md"
+  project zeta-one
+  run "$kit/bin/wk" kit-correction add uv-not-pip
+  [ "$status" -eq 1 ]
+  has "$output" "could not add this project"
 }

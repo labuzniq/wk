@@ -314,5 +314,6 @@ Claude Code 2.1.311. The list of rules, and which hook checks which, is in `docs
 - confirmed: `wk shared-vault check` prints nothing for a shared record whose projects are listed by that id, with the project names in the projects folder. Tested by `test/kit-correction.bats`.
 - confirmed: after `git clone`, `git symbolic-ref --short refs/remotes/origin/HEAD` prints `origin/<default branch>` (git 2.48 on this Mac, with a local bare repo as origin).
 - open: no real pull request was opened by `wk kit-correction offer`; the push goes to a local bare repo and `gh pr create` to the stand-in in the tests, because the ticket forbids a real one. The first real offer is the test.
+- docs: `gh pr list --state all --json url,state,headRefName` lists open, closed and merged pull requests (`--help` of gh 2.88.1); `wk pins-update` uses the same call.
 - open: whether `gh pr create`, run in the clone, picks the kit's repo on GitHub without `--repo`. It does for `wk pins-update`, which also runs in a clone of the kit; not tested for this command.
 - open: no real ingest has written a shared record yet; the record form and the skill texts are tested only through `wk kit-correction` and `wk doctor` with hand-made records.
