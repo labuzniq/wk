@@ -229,3 +229,21 @@ Each config in `templates/checks/starter/` was run on this Mac in a throwaway pr
 - open: a required check that has not reported yet may be missing from `statusCheckRollup`. GitHub's branch protection then refuses the merge, and the command never passes `--admin`; without branch protection such a check is not seen.
 - open: when one check name ran twice on a commit and one run failed, the command counts the failure, even if the later run passed.
 - The record lives in the pull request body, not in a file under the kit's state folder: the owner can see it on GitHub, it survives a new session and a new machine, and it sits next to the proof. It names the reviewed commit, so a record copied from another pull request or left over from before a push does not count.
+
+## Rules into hooks (2026-11-23)
+
+Claude Code 2.1.311. The list of rules, and which hook checks which, is in `docs/rules.md`.
+
+- confirmed: a `PreToolUse` hook gets JSON on stdin with `session_id`, `transcript_path`, `cwd`, `permission_mode`, `hook_event_name`, `tool_name`, `tool_input` and `tool_use_id`. For `Bash`, `tool_input` holds `command` and `description`; for `Write`, `file_path` (a full path) and `content`. Read from a real session with a hook that saved its input.
+- confirmed: a hook that exits with code 2 stops the tool call, and the agent gets the hook's stderr as `PreToolUse:<tool> hook error: [<hook path>]: <stderr>`. Tested in a real session in a throwaway repo: `git commit -m "wip"` and a `Write` under the vault's `wiki/` did not run, and the agent quoted the message word for word; `git commit -m "chore: second"` ran.
+- confirmed: the block holds in `bypassPermissions` mode, and against a `permissions.allow` rule that matches the command (`Bash(git *)`, with `git push --force origin main`).
+- confirmed: the matcher `Bash` and the matcher `Write|Edit|MultiEdit|NotebookEdit` ran the hooks for `Bash` and `Write` calls.
+- docs: `tool_input` of `Edit` holds `file_path`. The docs do not list the fields of `MultiEdit` and `NotebookEdit`; the hook reads `file_path`, then `notebook_path`. A `NotebookEdit` call with another field name passes with the "not checked" line.
+- confirmed: a hook that exits with code 1 does not block: in a real session the Bash call ran, and the agent did not see the hook's stderr. docs: the transcript shows it to the owner as a hook error. The hooks use exit 1 with one line on stderr for input they cannot read.
+- docs: hooks from the settings files also run inside subagents. Not tried in a real session.
+- docs: the hook input has no field that names the skill in use. This is why the wiki check reads the `no-capture` mark the wiki skills set in their first step, and why "load the `orca-cli` skill first" stays a judgment rule.
+- confirmed: `${CLAUDE_SESSION_ID}` in a skill loaded with the Skill tool is replaced by the same value as `session_id` in the hook input. The Bash tool also has it as the environment value `CLAUDE_CODE_SESSION_ID`; it has no `CLAUDE_SESSION_ID`. Tested with a stand-in skill in a real session.
+- open: when the agent reads a wiki skill's `SKILL.md` as a file, `${CLAUDE_SESSION_ID}` is not replaced, the shell sees an empty value and no mark is made. Nobody has seen this happen with the wiki skills. For that case the wiki check's message gives the exact command that marks the session, so a wiki run is not stuck. The skills are left as they are.
+- confirmed: time for one call on this Mac, average of 10: a Bash call without the word `git` 13 ms; a git command 28 ms; a forced push without a branch (one local `git branch --show-current`) 44 ms; a file write outside `wiki/` 24 ms; a file write under a `wiki/` folder 135 ms.
+- confirmed: `jq` needs more time with every word: a Bash call of 10,000 characters made only of quoted words took 0.7 seconds, one of 20,000 took 2 seconds. A usual long command (one heredoc of 430,000 characters) took 0.2 seconds. The hook therefore does not check input above 12,000 characters.
+- confirmed: `jq` 1.7.1 (the one macOS ships) runs `hooks/check-command.jq`: named groups, back references and lazy matching work in its regular expressions.
