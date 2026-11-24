@@ -1,0 +1,17 @@
+{
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": { "includes": ["**"] },
+  "linter": {
+    "rules": {
+      "preset": "none",
+      "suspicious": {
+        "noExplicitAny": "error",
+        "noTsIgnore": "error",
+        "noEmptyBlockStatements": "error",
+        "noConsole": { "level": "error", "options": { "allow": ["error", "warn"] } },
+        "noFocusedTests": "error",
+        "noSkippedTests": "error"
+      }
+    }
+  }
+}
