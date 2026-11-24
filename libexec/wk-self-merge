@@ -13,7 +13,8 @@ usage() {
 
 record_form='^wk-gate: head=[0-9a-f]{40} proof=(attached|none) findings=(none|low|medium|high|critical) agents=[a-z0-9-]+(,[a-z0-9-]+)*$'
 # Files that decide what the agent, the checks or this command do. A pull request that touches one waits for the owner.
-protected='^(\.workspace-kit\.toml$|orca\.yaml$|\.github/|\.claude/|hooks/|claude/settings\.fragment\.json$|libexec/wk-self-merge$)'
+protected='^(\.workspace-kit\.toml|orca\.yaml|mise\.toml|install\.sh|bin/wk|lib/project\.sh|test/run)$|^(\.github|hooks|claude|libexec|test/stubs)/'
+protected="$protected"'|(^|/)(CLAUDE\.md|AGENTS\.md|\.mcp\.json|\.gitmodules|CODEOWNERS|\.pre-commit-config\.yaml|lefthook\.yml)$|(^|/)(\.claude|\.codex|\.cursor|\.husky|\.githooks|\.devcontainer)/'
 
 mode=merge proof="" findings="" agents=""
 if [ "${1:-}" = record ]; then
@@ -35,19 +36,24 @@ fi
 [ $# -eq 0 ] || usage
 
 pr=$(gh pr view --json number,url,state,isDraft,isCrossRepository,baseRefName,headRefOid,changedFiles,statusCheckRollup,author,body) \
-  || { echo "self-merge: no pull request found for this branch; open one first" >&2; exit 1; }
+  || { echo "self-merge: no pull request found for this branch, or gh could not reach GitHub (see the line above); open the pull request first" >&2; exit 1; }
 field() { jq -r "$1" <<<"$pr"; }
 number=$(field .number)
 url=$(field .url)
 head=$(field .headRefOid)
-body=$(field .body | tr -d '\r')
+body=$(field '.body // ""' | tr -d '\r')
 repo=$(sed -En 's#^https?://[^/]+/([A-Za-z0-9._-]+/[A-Za-z0-9._-]+)/pull/[0-9]+$#\1#p' <<<"$url")
 [[ "$number" =~ ^[0-9]+$ ]] && [[ "$head" =~ ^[0-9a-f]{40}$ ]] && [ -n "$repo" ] \
   || { echo "self-merge: gh gave an answer this command cannot read (number '$number', head '$head', url '$url')" >&2; exit 1; }
 
 # The flag comes from GitHub's copy of the default branch, so a pull request cannot switch it on for itself.
 default=$(gh api "repos/$repo" --jq .default_branch) || { echo "self-merge: could not ask GitHub for the default branch of $repo" >&2; exit 1; }
-default_manifest=$(gh api -H "Accept: application/vnd.github.raw" "repos/$repo/contents/.workspace-kit.toml?ref=$(jq -rn --arg ref "$default" '$ref | @uri')" 2>/dev/null) || default_manifest=""
+if ! default_manifest=$(gh api -H "Accept: application/vnd.github.raw" "repos/$repo/contents/.workspace-kit.toml?ref=$(jq -rn --arg ref "$default" '$ref | @uri')" 2>&1); then
+  # Only "no such file" means off; any other failure must not look like a project that did not opt in.
+  grep -q 'HTTP 404' <<<"$default_manifest" \
+    || { echo "self-merge: could not read .workspace-kit.toml on $default from GitHub ($(tail -1 <<<"$default_manifest")); check \`gh auth status\` and run the command again" >&2; exit 1; }
+  default_manifest=""
+fi
 if ! tr -d '\r' <<<"$default_manifest" | awk '/^\[/ { exit } /^self_merge *= *true *$/ { on = 1 } END { exit !on }'; then
   echo "self-merge: off for this project (no \`self_merge = true\` in .workspace-kit.toml on $default); pull request #$number waits for the owner. Nothing to fix."
   exit 0
@@ -58,6 +64,7 @@ in_sync=""
 [ "$local_head" = "$head" ] || in_sync="this checkout is at ${local_head:0:7}, the pull request at ${head:0:7}; \`git push\` (or \`git pull\`) first"
 
 if [ "$mode" = record ]; then
+  [ "$(field .state)" = OPEN ] || { echo "self-merge: nothing recorded: pull request #$number is not open" >&2; exit 1; }
   [ -z "$in_sync" ] || { echo "self-merge: nothing recorded: $in_sync" >&2; exit 1; }
   git -C "$root" diff --quiet HEAD || { echo "self-merge: nothing recorded: tracked files have changes that are not committed; commit and push them, then run the review on that commit" >&2; exit 1; }
   line="wk-gate: head=$head proof=$proof findings=$findings agents=$agents"
@@ -83,13 +90,17 @@ fail() { failed+=("$1"); }
 [ "$(field .isDraft)" = false ] || fail "draft: the pull request is a draft; mark it ready with \`gh pr ready $number\`"
 [ "$(field .isCrossRepository)" = false ] || fail "fork: the pull request comes from another repo; only the owner merges those"
 me=$(gh api user --jq .login) || me=""
-[ -n "$me" ] && [ "$(field .author.login)" = "$me" ] || fail "author: the pull request was opened by '$(field .author.login)', not by this gh account ('$me'); only your own pull request is self-merged"
+if [ -z "$me" ]; then
+  fail "author: could not ask GitHub which account gh is logged in as; check \`gh auth status\`"
+fi
+[ -z "$me" ] || [ "$(field .author.login)" = "$me" ] || fail "author: the pull request was opened by '$(field .author.login)', not by this gh account ('$me'); only your own pull request is self-merged"
 [ "$(field .baseRefName)" = "$default" ] || fail "base: the pull request goes into '$(field .baseRefName)', not the default branch '$default'"
 [ -z "$in_sync" ] || fail "head: $in_sync"
 
 if files=$(gh api --paginate "repos/$repo/pulls/$number/files" --jq '.[] | "now " + .filename, "was " + (.previous_filename // empty)'); then
   listed=$(grep -c '^now ' <<<"$files" || true)
-  touched=$(sed -E 's/^(now|was) //' <<<"$files" | grep -Ei "$protected" | sort -u | paste -sd' ' - || true)
+  # File names are text from the pull request: quoted, cut short and at most five, so they cannot pass for instructions.
+  touched=$(sed -E 's/^(now|was) //' <<<"$files" | grep -Ei "$protected" | sort -u | head -5 | tr -c "[:alnum:]/._\n-" '?' | cut -c1-80 | sed "s/.*/'&'/" | paste -sd' ' - || true)
   if [ "$listed" != "$(field .changedFiles)" ] || [ "$listed" -eq 0 ]; then
     fail "protected files: GitHub listed $listed of $(field .changedFiles) changed files, so the check is not complete; the owner merges this one"
   elif [ -n "$touched" ]; then
@@ -99,7 +110,7 @@ else
   fail "protected files: could not ask GitHub for the changed files"
 fi
 
-read -r passed pending broken < <(field '
+counts=$(field '
   [.statusCheckRollup[]? |
     if .__typename == "StatusContext" then
       (if .state == "SUCCESS" then "pass" elif .state == "PENDING" or .state == "EXPECTED" then "pending" else "fail" end)
@@ -107,8 +118,11 @@ read -r passed pending broken < <(field '
     elif .conclusion == "SUCCESS" then "pass"
     elif .conclusion == "SKIPPED" or .conclusion == "NEUTRAL" then "skip"
     else "fail" end] |
-  "\(map(select(. == "pass")) | length) \(map(select(. == "pending")) | length) \(map(select(. == "fail")) | length)"')
-if [ "$broken" -gt 0 ]; then
+  "\(map(select(. == "pass")) | length) \(map(select(. == "pending")) | length) \(map(select(. == "fail")) | length)"') || counts=""
+read -r passed pending broken <<<"$counts" || true
+if ! [[ "$counts" =~ ^[0-9]+\ [0-9]+\ [0-9]+$ ]]; then
+  fail "checks: could not read the checks from gh's answer"
+elif [ "$broken" -gt 0 ]; then
   fail "checks: $broken failed; see \`gh pr checks $number\`, fix them and push"
 elif [ "$pending" -gt 0 ]; then
   fail "checks: $pending still running; wait with \`gh pr checks $number --watch\`, then run \`wk self-merge\` again"
@@ -139,7 +153,10 @@ else
     [ "$recorded_proof" = attached ] || fail "proof: recorded as $recorded_proof; a change without proof is merged by the owner"
   fi
 fi
-awk '/^## / { inside = ($0 ~ /^## Evidence[ \t]*$/); next } inside && NF { found = 1 } END { exit !found }' <<<"$body" \
+# Headings, comments, the record and the closing lines of a pull request body are not proof.
+awk '/^## / { inside = ($0 ~ /^## Evidence[ \t]*$/); next }
+  /^#/ || /^wk-gate: / || /^[ \t]*<!--.*-->[ \t]*$/ || /^---+[ \t]*$/ || /^Closes #[0-9]+[ \t]*$/ || /Generated with \[Claude Code\]/ { next }
+  inside && NF { found = 1 } END { exit !found }' <<<"$body" \
   || fail "proof: the pull request body has no text under \`## Evidence\`; put the proof there"
 
 if [ ${#failed[@]} -gt 0 ]; then
@@ -149,18 +166,18 @@ if [ ${#failed[@]} -gt 0 ]; then
 fi
 
 merge_output=$(gh pr merge "$number" --squash --match-head-commit "$head" 2>&1) \
-  || { echo "self-merge: pull request #$number stays in review; GitHub refused the merge: $merge_output"; exit 1; }
+  || { echo "self-merge: pull request #$number stays in review; GitHub refused the merge: $(tr -d '[:cntrl:]' <<<"$merge_output" | cut -c1-300)"; exit 1; }
 merged=$(gh pr view "$number" --json state,mergeCommit --jq '.state + " " + (.mergeCommit.oid // "")') || merged=""
 if [[ "$merged" != MERGED* ]]; then
-  echo "self-merge: GitHub accepted pull request #$number ($url) but has not merged it yet (a merge queue?); the card stays in review until \`wk board-sync\` sees the merge"
+  echo "self-merge: GitHub accepted pull request #$number ($url) but has not merged it yet (a merge queue?), or its state could not be read; the card stays in review until \`wk board-sync\` sees the merge. To revert once it is merged: gh pr revert $number"
   exit 0
 fi
 commit="${merged#MERGED }"
-report="self-merged pull request #$number ($url) as ${commit:0:7}; to revert: gh pr revert $number"
+report="self-merged pull request #$number ($url) ${commit:+as ${commit:0:7}}; to revert: gh pr revert $number"
 
 card=$(orca worktree current --json 2>/dev/null) || card=""
 if [ -n "$card" ] && [ "$(jq -r '.result.worktree.isMainWorktree' <<<"$card")" = false ]; then
-  rest=$(jq -r '.result.worktree.comment // ""' <<<"$card" | sed 1d)
+  rest=$(jq -r '.result.worktree.comment // ""' <<<"$card" | sed 1d) || rest=""
   orca worktree set --worktree "id:$(jq -r '.result.worktree.id' <<<"$card")" --workspace-status completed --comment "$report${rest:+$'\n'$rest}" --json >/dev/null \
     || report="$report (Orca did not take the card update; \`wk board-sync\` completes the card)"
 elif [ -z "$card" ]; then

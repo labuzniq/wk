@@ -56,6 +56,7 @@ case "$1 ${2:-}" in
     case "$endpoint" in
       repos/*/pulls/*/files) jq -r "$filter" "$GH_STUB/files.json" ;;
       repos/*/contents/.workspace-kit.toml\?ref=*)
+        if [ -f "$GH_STUB/manifest-error" ]; then cat "$GH_STUB/manifest-error" >&2; exit 1; fi
         [ -f "$GH_STUB/manifest.${endpoint##*ref=}" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
         cat "$GH_STUB/manifest.${endpoint##*ref=}"
         ;;

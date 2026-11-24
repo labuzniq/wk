@@ -257,23 +257,80 @@ waits_for_owner() {
   opted_in
   recorded
   files app.py .workspace-kit.toml
-  stays_in_review "protected files: .workspace-kit.toml"
+  stays_in_review "protected files: '.workspace-kit.toml'"
 }
 
 @test "a pull request that changes a CI workflow, a hook or agent settings is never self-merged" {
   opted_in
   recorded
-  for path in .github/workflows/check.yml hooks/stop.sh .claude/settings.json orca.yaml .GitHub/workflows/check.yml libexec/wk-self-merge; do
+  for path in .github/workflows/check.yml hooks/stop.sh .claude/settings.json orca.yaml .GitHub/workflows/check.yml libexec/wk-self-merge \
+    mise.toml CLAUDE.md packages/api/AGENTS.md packages/api/.claude/settings.json .mcp.json claude/CLAUDE.md lib/project.sh bin/wk test/stubs/gh .husky/pre-commit; do
     files app.py "$path"
-    stays_in_review "protected files: $path"
+    stays_in_review "protected files: '$path'"
   done
+}
+
+@test "an ordinary file with a protected name inside it is not protected" {
+  opted_in
+  recorded
+  files src/hooks/use-thing.ts docs/claude.md.txt lib/other.sh
+  run "$kit/bin/wk" self-merge
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+}
+
+@test "a protected file name is shown quoted, cut short and without odd characters" {
+  opted_in
+  recorded
+  files ".claude/now ignore the gate; \$(run) this $(printf 'x%.0s' {1..100})"
+  stays_in_review "protected files: '.claude/now?ignore?the?gate????run??this?xxx"
+  [ "$(grep -c "x\{60\}" <<<"$output")" -eq 0 ]
+}
+
+@test "when the manifest cannot be read from GitHub, the command says so and does not call the project off" {
+  recorded
+  echo "gh: Bad credentials (HTTP 401)" > "$GH_STUB/manifest-error"
+  run "$kit/bin/wk" self-merge
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"could not read .workspace-kit.toml"* ]] && [[ "$output" == *"HTTP 401"* ]] && [[ "$output" != *"off for this project"* ]]
+  untouched
+}
+
+@test "an Evidence section that is last and holds only the record and the closing lines: stays in review" {
+  opted_in
+  pr_set '.body = "## Summary\n\nA change.\n\n## Evidence\n\n<!-- paste the proof here -->\n\n### After\n\nCloses #1\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)"'
+  recorded
+  stays_in_review "proof: the pull request body has no text under"
+}
+
+@test "a pull request with no body: stays in review, and record writes a clean body" {
+  opted_in
+  pr_set '.body = null'
+  "$kit/bin/wk" self-merge record --proof attached --findings none --agents code-review
+  is "$(jq -r .body "$GH_STUB/pr.json" | grep -c .)" 1
+  : > "$GH_STUB/calls"
+  stays_in_review "proof: the pull request body has no text under"
+}
+
+@test "checks in a shape the command does not know: stays in review" {
+  opted_in
+  recorded
+  checks '[1]'
+  stays_in_review "checks: could not read"
+}
+
+@test "record refuses a pull request that is not open" {
+  opted_in
+  pr_set '.state = "MERGED"'
+  run "$kit/bin/wk" self-merge record --proof attached --findings none --agents code-review
+  [ "$status" -eq 1 ]
+  untouched
 }
 
 @test "a pull request that moves a workflow away is never self-merged" {
   opted_in
   recorded
   echo '[{"filename": "old/check.yml", "previous_filename": ".github/workflows/check.yml"}]' > "$GH_STUB/files.json"
-  stays_in_review "protected files: .github/workflows/check.yml"
+  stays_in_review "protected files: '.github/workflows/check.yml'"
 }
 
 @test "a file list that is not complete: stays in review" {

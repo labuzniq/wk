@@ -93,7 +93,7 @@ A project opts in with `self_merge = true` in `.workspace-kit.toml`, merged into
 
 It prints one line: `self-merged pull request #12 (<url>) as 1a2b3c4; to revert: gh pr revert 12`. When a condition fails, it names each one, merges nothing and leaves the card in review. Without the flag it says so and the pull request waits for you, as before.
 
-A pull request never switches this on for itself: the flag is read from GitHub's copy of the default branch. These pull requests always wait for you: one that changes `.workspace-kit.toml`, `orca.yaml` or anything under `.github/`, `.claude/` or `hooks/`; one from a fork, opened by another account, into a branch other than the default one, or a draft. Branch protection still applies: the command never uses `--admin`.
+A pull request never switches this on for itself: the flag is read from GitHub's copy of the default branch. These pull requests always wait for you: one that changes a file that decides what the agent or the checks do (`.workspace-kit.toml`, `orca.yaml`, `mise.toml`, `CLAUDE.md`, `AGENTS.md`, `.mcp.json`, anything under `.github/`, `.claude/` or `hooks/`; the full list is at the top of `libexec/wk-self-merge`); one from a fork, opened by another account, into a branch other than the default one, or a draft. Branch protection still applies: the command never uses `--admin`.
 
 ## Good to know
 

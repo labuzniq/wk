@@ -57,7 +57,7 @@ Before opening a PR, do step 1, then step 2; when the PR is open, do step 3. Whe
 
 2. Run `/code-review` and the specialists from the table below in one parallel batch, then merge, dedupe and rank the findings. Do this on every PR, even with good proof: the agents check what tests cannot and what needs judgment. When a finding leads to a change in the code, gather the proof again.
 
-3. Run `wk self-merge record --proof <attached|none> --findings <none|low|medium|high|critical> --agents <names, with commas>`, where `--findings` is the highest finding still open after your fixes. Wait for the checks with `gh pr checks --watch`, then run `wk self-merge`. It merges only in a project that opted in, and only when checks, proof and review hold; otherwise the PR waits for me. Merge a PR in no other way, and change no file to make it merge.
+3. Run `wk self-merge record --proof <attached|none> --findings <none|low|medium|high|critical> --agents <names, with commas>`, where `--findings` is the highest finding still open after your fixes. When it answers that self-merge is off, stop: the PR waits for me. Otherwise wait for the checks with `gh pr checks --watch`, then run `wk self-merge`: it merges only when checks, proof and review hold, and says which one failed. Unless I ask, merge a PR in no other way, and change no file to make it merge.
 
 Specialists by what changed:
 
