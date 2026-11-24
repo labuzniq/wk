@@ -52,17 +52,22 @@ else
 
   hooks_file="$codex_dir/hooks.json"
   current='{}'
-  [ ! -f "$hooks_file" ] || current=$(jq . "$hooks_file")
-  merged=$(jq --arg kit "$kit" --slurpfile fragment "$kit/codex/hooks.fragment.json" '
-    def add_missing($new): reduce $new[] as $x (.; if index([$x]) then . else . + [$x] end);
-    reduce ($fragment[0] | walk(if type == "string" then sub("__KIT__"; $kit) else . end) | .hooks | to_entries[]) as $event (.;
-      .hooks[$event.key] = ((.hooks[$event.key] // []) | add_missing($event.value)))' <<<"$current")
-  if [ "$merged" != "$current" ]; then
-    backup "$hooks_file"
-    printf '%s\n' "$merged" > "$hooks_file.new"
-    mv "$hooks_file.new" "$hooks_file"
-    echo "merged hooks into $hooks_file"
-    echo "Codex runs a new or changed hook only after you trust it: open /hooks in Codex and trust the workspace-kit hooks"
-    echo "Codex has no WorktreeCreate or WorktreeRemove hook: a worktree Codex makes itself does not become an Orca card (see docs/verified.md)"
+  # A hooks file Codex would not read either is left as it is; the rest of the install goes on.
+  if [ -f "$hooks_file" ] && ! current=$(jq -e 'if type == "object" and ((.hooks // {}) | type == "object") then . else error("shape") end' "$hooks_file" 2>/dev/null); then
+    echo "skipped Codex hooks: $hooks_file is not valid JSON of the form {\"hooks\": {...}}; fix it and run install.sh again"
+  else
+    merged=$(jq --arg kit "$kit" --slurpfile fragment "$kit/codex/hooks.fragment.json" '
+      def add_missing($new): reduce $new[] as $x (.; if index([$x]) then . else . + [$x] end);
+      reduce ($fragment[0] | walk(if type == "string" then sub("__KIT__"; $kit) else . end) | .hooks | to_entries[]) as $event (.;
+        .hooks[$event.key] = ((.hooks[$event.key] // []) | if type == "array" then add_missing($event.value) else error("not a list") end))' <<<"$current" 2>/dev/null) \
+      || { echo "skipped Codex hooks: $hooks_file has an event that does not hold a list; fix it and run install.sh again"; merged="$current"; }
+    if [ "$merged" != "$current" ]; then
+      backup "$hooks_file"
+      # Written in place, so a file that is a link into the person's own dotfiles stays a link.
+      printf '%s\n' "$merged" > "$hooks_file"
+      echo "merged hooks into $hooks_file"
+      echo "Codex runs a new or changed hook only after you trust it: open /hooks in Codex and trust the workspace-kit hooks"
+      echo "Codex has no WorktreeCreate or WorktreeRemove hook, and the kit's PreToolUse checks are not set up for Codex: see docs/verified.md"
+    fi
   fi
 fi

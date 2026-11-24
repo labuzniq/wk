@@ -22,6 +22,9 @@ setup() {
 
 install() { run "$copy/install.sh" "$HOME/projects"; }
 with_codex() { PATH="$HOME/codex-bin:$PATH" "$@"; }
+# has / lacks <text>: whether the output holds the text. A [[ ]] that is not the last line of a test fails nothing under bash 3.2.
+has() { [[ "$output" == *"$1"* ]] || { printf 'output lacks: %s\n%s\n' "$1" "$output"; return 1; }; }
+lacks() { [[ "$output" != *"$1"* ]] || { printf 'output holds: %s\n' "$1"; return 1; }; }
 
 snapshot() {
   find "$HOME/.claude" "$HOME/.codex" "$HOME/.agents" "$HOME/.config" "$HOME/.local/bin" -type f -exec shasum {} + 2>/dev/null | sort
@@ -35,7 +38,7 @@ kit_block() { awk '/^<!-- workspace-kit:end/ {exit} on {print} /^<!-- workspace-
   install
   [ "$status" -eq 0 ]
   is "$(grep -c Codex <<<"$output")" 1
-  [[ "$output" == *"skipped Codex: 'codex' is not on PATH"* ]]
+  has "skipped Codex: 'codex' is not on PATH"
   [ ! -e "$HOME/.codex" ]
   [ ! -e "$HOME/.agents/skills/wiki-ingest" ]
 }
@@ -45,7 +48,7 @@ kit_block() { awk '/^<!-- workspace-kit:end/ {exit} on {print} /^<!-- workspace-
   [ "$status" -eq 0 ]
   is "$(kit_block "$agents_md")" "$(cat "$copy/claude/CLAUDE.md")"
   grep -q '^# My instructions' "$agents_md"
-  [[ "$output" == *"wrote $agents_md"* ]]
+  has "wrote $agents_md"
   for skill in project-setup wiki-ingest wiki-lint; do
     is "$(readlink "$HOME/.agents/skills/$skill")" "$copy/skills/$skill"
   done
@@ -54,9 +57,9 @@ kit_block() { awk '/^<!-- workspace-kit:end/ {exit} on {print} /^<!-- workspace-
   is "$(jq -r '.hooks.SessionEnd[0].hooks[0].command' "$hooks")" "$copy/hooks/enqueue-session.sh"
   is "$(jq -r '.hooks.PreCompact[0].hooks[0].command' "$hooks")" "$copy/hooks/enqueue-session.sh"
   is "$(jq -r '.hooks.Stop[0].hooks[0].command' "$hooks")" "$copy/hooks/stop.sh"
-  [[ "$output" == *"merged hooks into $hooks"* ]]
-  [[ "$output" == *"open /hooks in Codex"* ]]
-  [[ "$output" == *"Codex has no WorktreeCreate or WorktreeRemove hook"* ]]
+  has "merged hooks into $hooks"
+  has "open /hooks in Codex"
+  has "Codex has no WorktreeCreate or WorktreeRemove hook"
 }
 
 @test "a second run with codex changes nothing and prints no change" {
@@ -77,7 +80,7 @@ kit_block() { awk '/^<!-- workspace-kit:end/ {exit} on {print} /^<!-- workspace-
   is "$(kit_block "$agents_md")" "$(cat "$copy/claude/CLAUDE.md")"
   is "$(sed -n '/^<!-- workspace-kit:end/,$p' "$agents_md" | sed 1d)" $'\n# Mine\n- my own rule'
   is "$(cat "$HOME"/.claude/backup/*/AGENTS.md)" $'# Mine\n- my own rule'
-  [[ "$output" == *"added the kit's instructions at the top of $agents_md; your text is kept"* ]]
+  has "added the kit's instructions at the top of $agents_md; your text is kept"
 }
 
 @test "after a git pull changes the shared instructions, the next run updates the kit's part and keeps the rest" {
@@ -88,7 +91,7 @@ kit_block() { awk '/^<!-- workspace-kit:end/ {exit} on {print} /^<!-- workspace-
   [ "$status" -eq 0 ]
   is "$(kit_block "$agents_md")" "$(cat "$copy/claude/CLAUDE.md")"
   is "$(tail -1 "$agents_md")" "- my own Codex rule"
-  [[ "$output" == *"updated the kit's instructions in $agents_md"* ]]
+  has "updated the kit's instructions in $agents_md"
 }
 
 @test "hooks the person set in Codex are kept, and CODEX_HOME moves the Codex files" {
@@ -106,14 +109,14 @@ kit_block() { awk '/^<!-- workspace-kit:end/ {exit} on {print} /^<!-- workspace-
   mkdir -p "$HOME/.codex"
   echo "- override" > "$HOME/.codex/AGENTS.override.md"
   with_codex install
-  [[ "$output" == *"$HOME/.codex/AGENTS.override.md is not empty, so Codex reads it instead of $agents_md"* ]]
+  has "$HOME/.codex/AGENTS.override.md is not empty, so Codex reads it instead of $agents_md"
 }
 
 @test "a skill folder the person put in ~/.agents/skills under a kit skill's name is kept" {
   mkdir -p "$HOME/.agents/skills/wiki-lint"
   with_codex install
   [ ! -L "$HOME/.agents/skills/wiki-lint" ]
-  [[ "$output" == *"kept real folder $HOME/.agents/skills/wiki-lint"* ]]
+  has "kept real folder $HOME/.agents/skills/wiki-lint"
 }
 
 # A Codex rollout file in the format the Codex source writes (codex-rs/history, codex-rs/protocol/src/models.rs).
@@ -183,8 +186,7 @@ codex_session_starts() {
   adopted_project
   run codex_session_starts "$project"
   [ "$status" -eq 0 ]
-  [[ "$output" == "Project: demo (code)"* ]]
-  [[ "$output" != "{"* ]]
+  is "$(head -1 <<<"$output")" "Project: demo (code)"
 }
 
 @test "a begin marker without an end marker keeps everything below it" {
@@ -198,4 +200,48 @@ codex_session_starts() {
   with_codex install
   is "$(snapshot)" "$before"
   grep -qx -- '- my own rule' "$agents_md"
+}
+
+@test "a Codex hooks file that is not valid is left as it is, said so, and the rest of the install goes on" {
+  mkdir -p "$HOME/.codex"
+  for broken in '{"hooks": ' '{"hooks": {"Stop": {}}}' '[]'; do
+    printf '%s\n' "$broken" > "$hooks"
+    with_codex install
+    [ "$status" -eq 0 ]
+    has "skipped Codex hooks: $hooks"
+    is "$(cat "$hooks")" "$broken"
+    [ -f "$agents_md" ]
+    [ -L "$HOME/.local/bin/wk" ]
+  done
+}
+
+@test "a Codex hooks file that is a link into the person's dotfiles stays a link" {
+  mkdir -p "$HOME/.codex" "$HOME/dotfiles"
+  echo '{}' > "$HOME/dotfiles/hooks.json"
+  ln -s ../dotfiles/hooks.json "$hooks"
+  with_codex install
+  is "$(readlink "$hooks")" ../dotfiles/hooks.json
+  is "$(jq -r '.hooks.Stop[0].hooks[0].command' "$HOME/dotfiles/hooks.json")" "$copy/hooks/stop.sh"
+}
+
+@test "an assistant answer that is one tagged block (a Codex plan) is kept" {
+  printf '%s\n' \
+    '{"timestamp":"t","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Plan the login page"}]}}' \
+    '{"timestamp":"t","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"<proposed_plan>\n1. Form\n</proposed_plan>"}]}}' \
+    '{"timestamp":"t","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"# AGENTS.md instructions are read"}]}}' > "$HOME/plan.jsonl"
+  run "$kit/bin/wk" transcript "$HOME/plan.jsonl"
+  is "$output" $'user_turns: 1\n\n## user\nPlan the login page\n\n## assistant\n<proposed_plan>\n1. Form\n</proposed_plan>\n\n## assistant\n# AGENTS.md instructions are read'
+}
+
+@test "the doctor reports a Codex copy of the shared instructions older than the kit's, and the installer fixes it" {
+  with_codex install
+  adopted_project
+  run "$kit/bin/wk" doctor
+  lacks "codex_instructions:"
+  echo "- a new shared rule" >> "$copy/claude/CLAUDE.md"
+  run "$kit/bin/wk" doctor
+  has "codex_instructions: $agents_md holds an older copy"
+  with_codex install
+  run "$kit/bin/wk" doctor
+  lacks "codex_instructions:"
 }

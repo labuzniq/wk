@@ -2,12 +2,12 @@
 # Prints what was said in a Claude Code transcript or a Codex rollout file: user and assistant text, without tool calls. First line: user turn count.
 set -euo pipefail
 transcript="${1:?usage: wk transcript <transcript.jsonl>}"
-# Codex puts its context (AGENTS.md, <environment_context>…) into user messages; such a part is dropped, and text before "## My request for Codex:" is not the user's.
-said='def codex_text: map(select(.type == "input_text" or .type == "output_text") | .text
-    | if contains("## My request for Codex:") then sub("^[\\s\\S]*## My request for Codex:\\s*"; "") else . end
-    | select(test("^# AGENTS\\.md instructions|^\\s*<([a-z_]+)>[\\s\\S]*</\\1>\\s*$") | not)) | join("\n");
+# Codex puts its context (AGENTS.md, <environment_context>…) into user messages; such a part of a user message is dropped, and text before "## My request for Codex:" is not the user's.
+said='def user_part: if contains("## My request for Codex:") then sub("^[\\s\\S]*## My request for Codex:\\s*"; "") else . end
+    | select(test("^# AGENTS\\.md instructions|^\\s*<([a-z_]+)>[\\s\\S]*</\\1>\\s*$") | not);
   if .type == "response_item" then .payload | select(.type == "message" and (.role == "user" or .role == "assistant"))
-    | {role, text: (.content | codex_text)}
+    | .role as $role
+    | {role, text: (.content | map(select(.type == "input_text" or .type == "output_text") | .text | if $role == "user" then user_part else . end) | join("\n"))}
   else select(.type == "user" or .type == "assistant") | select(.isSidechain | not)
     | {role: .type, text: (.message.content | if type == "string" then . else map(select(.type == "text") | .text) | join("\n") end)}
   end
