@@ -171,6 +171,11 @@ AUTOMATIONS = {
         "--prompt", "Run the wiki-ingest skill on every queued session, then stop.",
     ],
     "Wiki lint: {slug}": ["--trigger", "0 9 * * 6", "--prompt", "Run the wiki-lint skill, then stop."],
+    "Worktree cleanup: {slug}": [
+        "--trigger", "daily", "--time", "08:00", "--missed-run-grace-minutes", "720",
+        "--precheck", 'cd "{root}" && "{kit}/bin/wk" worktree-cleanup --dry-run | grep -q "^would remove"', "--precheck-timeout", "300",
+        "--prompt", "Run `wk worktree-cleanup` in this folder once, print its output, then stop. Remove no worktree by hand.",
+    ],
 }
 
 
@@ -199,14 +204,14 @@ def create_automations(root: Path, vault: Path, slug: str) -> None:
         name = name_template.format(slug=slug)
         if name in existing:
             continue
-        flags = [flag.format(slug=slug, vault=vault) for flag in flags]
+        flags = [flag.format(slug=slug, vault=vault, root=root, kit=KIT) for flag in flags]
         run("orca", "automations", "create", "--name", name, *flags, "--provider", "claude",
             "--workspace", f"path:{root}", "--fresh-session", "--enabled", "--json")
         print(f"created automation '{name}'")
-    # `wk doctor` may not wait on Orca, so it reads this marker.
+    # `wk doctor` may not wait on Orca, so it reads this marker: the names of the automations the project has.
     marker = Path.home() / ".local/state/workspace-kit/automations" / hashlib.sha1(str(root).encode()).hexdigest()
     marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.touch()
+    marker.write_text("".join(name.format(slug=slug) + "\n" for name in AUTOMATIONS))
 
 
 def allow_vault(settings_file: Path, vault: Path) -> None:

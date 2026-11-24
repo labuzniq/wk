@@ -42,7 +42,7 @@ session_start() { jq -n --arg cwd "$PWD" '{cwd: $cwd}' | "$kit/hooks/session-sta
   is "$(git status --porcelain)" ""
   is "$(cat "$state/repos/$(printf '%s' "$PWD" | shasum | cut -d' ' -f1)")" 'orca_repo_id = "repo-2"'
   is "$(jq -r '.permissions.additionalDirectories[0]' .claude/settings.local.json)" "$PWD/knowledge-base"
-  is "$(jq -r '.[].name' "$ORCA_STUB/automations.json" | sort | paste -sd, -)" "Wiki ingest: demo,Wiki lint: demo"
+  is "$(jq -r '.[].name' "$ORCA_STUB/automations.json" | sort | paste -sd, -)" "Wiki ingest: demo,Wiki lint: demo,Worktree cleanup: demo"
   "$kit/bin/wk" doctor > /dev/null # the deferred vision is reported once per person
   run "$kit/bin/wk" doctor
   is "$output" ""

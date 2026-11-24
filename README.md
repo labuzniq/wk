@@ -4,7 +4,7 @@ One repeatable setup for every project, built around [Orca](https://orca.dev) an
 
 ## What it does
 
-- **Project setup without commands.** On first open of a new folder, the agent runs `wk adopt`: toolchain (`mise.toml`), worktree setup (`orca.yaml`), tracker config, a knowledge vault and two Orca automations. An existing repo on GitHub gets the same capsule as a pull request (`wk adopt-pr`): merge it for yes, close it for no. Nothing lands on its default branch before you merge, and a closed pull request is never offered again.
+- **Project setup without commands.** On first open of a new folder, the agent runs `wk adopt`: toolchain (`mise.toml`), worktree setup (`orca.yaml`), tracker config, a knowledge vault and three Orca automations. An existing repo on GitHub gets the same capsule as a pull request (`wk adopt-pr`): merge it for yes, close it for no. Nothing lands on its default branch before you merge, and a closed pull request is never offered again.
 - **Orca owns worktrees and tasks.** Every worktree Claude Code creates becomes an Orca workspace card. Cards move to `in-progress`, `in-review` and `completed` from commits and pull request state, after every agent turn.
 - **Idea to tickets.** The agent follows [Matt Pocock's skills](https://github.com/mattpocock/skills) (`ask-matt`, `to-spec`, `to-tickets`, `implement`…) itself; tickets are issues in the project's tracker (GitHub, GitLab or local files), specs live in `docs/specs/`, and a workspace is created when work on a ticket starts.
 - **Review gate.** Before a pull request the agent first gathers proof that the change works (test output, a run of the app, a screenshot) and puts it in the pull request; then the review agents run. Eleven review and build-fix agents from [ECC](https://github.com/affaan-m/ECC), pinned to one commit, with skills preloaded.
@@ -41,6 +41,7 @@ Then do the three manual Orca settings in [`docs/orca-settings.md`](docs/orca-se
 | `wk adopt-pr` | Offer the capsule to an existing repo as a pull request, on a branch in an Orca worktree |
 | `wk doctor` | Print one line per missing piece of the capsule |
 | `wk board-sync [--repo]` | Move Orca cards forward from git and pull request state |
+| `wk worktree-cleanup [--dry-run]` | Remove this project's worktrees whose branch is merged and whose card has been completed for 14 days; print each worktree and why it was removed or kept |
 | `wk agents-sync` | Install the pinned ECC agents, with their recorded patches |
 | `wk skills-sync` | Install the pinned third-party skills, with their recorded patches |
 | `wk transcript <file>` | Print what was said in a Claude Code transcript |
@@ -88,6 +89,7 @@ Everything the capsule commits works for everyone who clones the repo. What is t
 ## Good to know
 
 - If Orca is not running, Claude Code cannot create worktrees: the kit routes them through Orca on purpose and has no fallback.
+- A worktree is removed without asking only by the daily `Worktree cleanup: <project>` automation: its branch must be merged, its card completed for 14 days, and it must hold no uncommitted or untracked files. The branch stays. The 14 days count from the first run that saw the card completed, so a run with `--dry-run` also notes that time. One exception: a worktree Claude Code made for a subagent is removed with its branch when the subagent ends and left nothing in it.
 - The wiki automation commits changes under `knowledge-base/` onto the branch the primary checkout is on, and does not push.
 - Third-party skills and agents are installed from their own repos, each pinned to one commit: skills in `skills.txt` (`owner/repo#<commit>`), agents in `agents/agents.toml`. This repo holds none of their text.
 - When a skill or an agent does not fit this setup, it carries a recorded patch: `patches/skills/<name>.patch` or `patches/agents/<name>.patch`, a unified diff with `a/` and `b/` path prefixes (for a skill, paths inside its folder; for an agent, `<name>.md`). `wk skills-sync` and `wk agents-sync` apply it after install. `skills.lock` and `agents/agents.lock` record the checksum before and after, and `wk doctor` reports an install that differs. A patch that no longer applies stops the sync and names the skill or agent. A skill you edited by hand is moved to `~/.claude/backup/` before the pinned one replaces it.

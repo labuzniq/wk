@@ -8,6 +8,7 @@ case "$1 ${2:-}" in
   "worktree current") cat "$ORCA_STUB/current.json" ;;
   "worktree list") cat "$ORCA_STUB/list.json" ;;
   "worktree set" | "repo set-base-ref") ;;
+  "worktree rm") [ ! -f "$ORCA_STUB/rm-fails" ] || { jq -Rc '{ok: false, error: {message: .}}' "$ORCA_STUB/rm-fails"; exit 1; } ;;
   "worktree create")
     # Makes a real git worktree of the repo in the current folder, as Orca would.
     name=""

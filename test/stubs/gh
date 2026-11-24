@@ -9,7 +9,7 @@ url=https://github.com/someone/legacy/pull/7
 case "$1 ${2:-}" in
   "pr view")
     case "${4:-} ${5:-} ${6:-}" in
-      "--json state,reviewDecision --jq" | "--json state --jq") jq -r "$7" "$GH_STUB/pr.json" ;;
+      "--json state,reviewDecision --jq" | "--json state,headRefOid --jq" | "--json state --jq") jq -r "$7" "$GH_STUB/pr.json" ;;
       *) echo "gh stand-in: unexpected call '$*'; teach test/stubs/gh the new form" >&2; exit 64 ;;
     esac
     ;;
