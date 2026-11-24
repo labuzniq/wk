@@ -21,7 +21,9 @@ card() {
 commit() { git -C "$repo" commit -q --allow-empty -m "feat: work"; }
 pushed() { git -C "$repo" update-ref refs/remotes/origin/task HEAD; }
 # pull_request <state> [review decision]: what GitHub knows about the branch's pull request.
-pull_request() { jq -n --arg state "$1" --arg review "${2:-}" '{state: $state, reviewDecision: $review}' > "$GH_STUB/pr.json"; }
+pull_request() {
+  jq -n --arg state "$1" --arg review "${2:-}" '{state: $state, reviewDecision: $review, body: "", closingIssuesReferences: []}' > "$GH_STUB/pr.json"
+}
 
 # moved_to <status> [card id]
 moved_to() { grep -qx -- "worktree set --worktree id:${2:-card-1} --workspace-status $1 --json" "$ORCA_STUB/calls"; }
@@ -145,7 +147,7 @@ not_moved() {
   pull_request OPEN
   "$kit/bin/wk" board-sync
   "$kit/bin/wk" board-sync
-  is "$(cut -d' ' -f1-5 "$GH_STUB/calls")" "pr view task --json state,reviewDecision"
+  is "$(cat "$GH_STUB/calls")" "pr view task --json state,reviewDecision,body,closingIssuesReferences"
 }
 
 @test "gh is asked again after ten minutes" {
@@ -157,6 +159,29 @@ not_moved() {
   find "$state/gh" -type f -exec touch -t 202001010000 {} +
   "$kit/bin/wk" board-sync
   is "$(wc -l < "$GH_STUB/calls" | tr -d ' ')" 2
+}
+
+@test "a card that Orca refuses to move does not stop the cards after it" {
+  card todo
+  commit
+  other="$HOME/projects/other"
+  new_repo "$other"
+  touch "$other/notes.txt"
+  jq --arg other "$other" '{result: {worktrees: [.result.worktree, (.result.worktree | .id = "card-2" | .path = $other | .branch = "refs/heads/main")]}}' \
+    "$ORCA_STUB/current.json" > "$ORCA_STUB/list.json"
+  touch "$ORCA_STUB/set-fails"
+  "$kit/bin/wk" board-sync --repo
+  moved_to in-progress card-2
+}
+
+@test "a checkout with no branch does not shift the card's other fields" {
+  card todo
+  touch "$repo/notes.txt"
+  jq '.result.worktree.branch = "" | .result.worktree.linkedIssue = null | .result.worktree.createdAt = 1767225600000' "$ORCA_STUB/current.json" > "$ORCA_STUB/current.json.new"
+  mv "$ORCA_STUB/current.json.new" "$ORCA_STUB/current.json"
+  "$kit/bin/wk" board-sync
+  moved_to in-progress
+  [ ! -s "$GH_STUB/calls" ]
 }
 
 @test "the main checkout is never moved" {
