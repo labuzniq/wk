@@ -60,6 +60,21 @@ new_repo() {
   git -C "$1" commit -q --allow-empty -m "chore: start"
 }
 
+# existing_repo: a repo with history and a GitHub remote, without a capsule; sets $project and cds into it.
+# Pushes to that remote land in the bare repo $HOME/origin.git.
+existing_repo() {
+  project="$HOME/projects/legacy"
+  git init -q --bare "$HOME/origin.git"
+  git config --global "url.$HOME/origin.git.insteadOf" "git@github.com:someone/legacy.git"
+  new_repo "$project"
+  cd "$project" || return 1
+  echo "old code" > main.txt
+  git add main.txt
+  git commit -q -m "feat: old code"
+  git remote add origin git@github.com:someone/legacy.git
+  git push -q -u origin main
+}
+
 # adopted_project: a project under the projects folder with the capsule committed; sets $project and cds into it.
 adopted_project() {
   project="$HOME/projects/demo"

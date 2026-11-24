@@ -87,7 +87,7 @@ None of these would make an agent fail, so no patch is planned.
 ## Phase 5 results (2026-11-23)
 
 - `setup-matt-pocock-skills` stores its tracker choice in `docs/agents/issue-tracker.md`; the `matt_setup` check looks for that file.
-- The `vision` skill may write the vision into `STRATEGY.md` instead of `VISION.md`; the `vision` check accepts either.
+- The `vision` skill may write the vision into `STRATEGY.md` instead of `VISION.md`; the `vision` check accepts either. It did so in this repo, because no `VISION.md` existed; on 2026-11-23 the file was renamed to `VISION.md`, which is where the global instructions and the session-start hook look.
 - `orca worktree current --json` takes about 1 second, too slow for the session-start hook. `wk board-sync` saves the card to `~/.local/state/workspace-kit/cards/`, and the hook reads that copy. The first session in a new worktree shows "not cached yet".
 - Doctor and session-start hook each ran in under 0.5 seconds on the demo project.
 - `orca_repo` passes when `orca_repo_id` is set in `.workspace-kit.toml` (no Orca call). `orca_setup_hook` passes when `orca.yaml` has `scripts.setup` (no marker file).
@@ -142,6 +142,18 @@ The first real use of `to-tickets` created 16 empty workspaces and no issue. Orc
 - A skill that differs from what the lock file can bring back is moved to `~/.claude/backup/<timestamp>-skills/` before it is installed again.
 - No patch ships yet: check V11 found no skill or agent that needs one. The tests apply a patch to a stand-in skill and a stand-in agent.
 - `wk skills-sync` and `wk agents-sync` are tested with stand-ins for `npx` and for the upstream repo, not against the network.
+
+## Capsule by pull request (2026-11-23)
+
+This replaces "in an existing repo with history it asks once" from the change of direction above, for repos whose `origin` is on github.com and that belong to the signed-in `gh` user. A repo without a GitHub remote is still asked about once. A repo on GitHub that belongs to someone else (an employer, an open-source project) is asked about once too, because a branch and a pull request there are seen by other people; on yes the agent runs `wk adopt-pr --confirmed`.
+
+- `wk adopt-pr` creates the Orca worktree `workspace-kit-capsule`, runs `wk adopt` in it, pushes the branch and opens the pull request. A run that stopped half way can be run again: it takes over the worktree, the branch and an open pull request.
+- The offer is remembered in `~/.local/state/workspace-kit/capsule-pr/` (four lines: number, URL, state, worktree path).
+- The session-start hook makes no network call: it reads that file and starts `wk adopt-pr --refresh` in the background. A closed pull request becomes a file in `declined/`, the same place an old "no" lives, and its card is completed.
+- `wk adopt` in a worktree whose main checkout has no capsule yet creates files only. The Orca automations and the vault permission in the main checkout are created by `wk adopt` there after the merge; the doctor's `automations` gap asks for it. The doctor reads a marker file, not Orca. A project adopted before this change shows that gap once, until `wk adopt` writes the marker.
+- Before the merge, Orca already knows the repo (`orca repo add`, `orca repo set-base-ref`): a worktree cannot be created without it.
+- confirmed with stand-ins for `orca` and `gh`. The Orca and gh calls it makes (`orca worktree create --repo --name --no-parent --setup skip --comment --json`, `orca worktree set --pr --workspace-status`, `gh pr create`, `gh pr view --json state`, `gh pr list --head`, `gh repo view --json owner`, `gh api user`) were each used by hand on this Mac the same day or are read in `--help`.
+- open: one whole run of `wk adopt-pr` against a real repo on GitHub.
 
 ## Shared vault (2026-11-23)
 

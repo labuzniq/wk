@@ -1,6 +1,6 @@
 # Vision gap
 
-The work that takes `wk` from what it does today to what the Vision section of `STRATEGY.md` says (that file arrives with the vision pull request).
+The work that takes `wk` from what it does today to what `VISION.md` says.
 One section per ticket. Each ticket is one issue in the tracker; its body links to its section here.
 
 Order: `kit-test-harness` and `proof-first-review` can start at once. Every other ticket waits for `kit-test-harness`, because the vision says an automation is built only on top of a step that already works without hand correction, and the kit holds its own scripts to that first.
