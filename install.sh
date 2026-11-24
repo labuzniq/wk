@@ -92,6 +92,9 @@ done
 
 "$kit/bin/wk" agents-sync
 
+# shellcheck source=codex/install.sh
+. "$kit/codex/install.sh"
+
 mkdir -p "$HOME/.local/bin"
 link "$kit/bin/wk" "$HOME/.local/bin/wk"
 

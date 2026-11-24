@@ -76,6 +76,10 @@ done
 kit_dir=$(wk_config kit)
 grep -qsxF "@${kit_dir// /\\ }/claude/CLAUDE.md" "$HOME/.claude/CLAUDE.md" \
   || gap instructions "$HOME/.claude/CLAUDE.md does not import the kit's shared instructions; run \`$kit_dir/install.sh\` (it keeps your own text and backs the file up)"
+codex_md="${CODEX_HOME:-$HOME/.codex}/AGENTS.md"
+! grep -qs '^<!-- workspace-kit:begin' "$codex_md" \
+  || [ "$(awk '/^<!-- workspace-kit:end/ {exit} on {print} /^<!-- workspace-kit:begin/ {on = 1}' "$codex_md")" = "$(cat "$kit_dir/claude/CLAUDE.md")" ] \
+  || gap codex_instructions "$codex_md holds an older copy of the kit's shared instructions; run \`$kit_dir/install.sh\` (it keeps your own text and backs the file up)"
 skills_lock="$kit_dir/skills.lock"
 if locked_skills=$(jq -r '.skills | keys | join(" ")' "$skills_lock" 2>/dev/null); then
   # shellcheck disable=SC2086 # one skill name per word; skills-sync allows no other characters in a name
