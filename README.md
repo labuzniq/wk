@@ -83,7 +83,7 @@ knowledge-base/       the vault: raw/ sources and wiki/ pages
 
 ## Sharing a project
 
-Everything the capsule commits works for everyone who clones the repo. What is true for one person only stays on their Mac: the Orca repo id in `~/.local/state/workspace-kit/repos/`, the vault permission in the gitignored `.claude/settings.local.json`, and the two wiki automations in their own Orca. A second person installs the kit, clones the repo and opens it: the first session reports the `orca_repo` gap, and the agent fixes it with `wk adopt`, which changes no committed file.
+Everything the capsule commits works for everyone who clones the repo. What is true for one person only stays on their Mac: the Orca repo id in `~/.local/state/workspace-kit/repos/`, the vault permission in the gitignored `.claude/settings.local.json`, and the two wiki automations in their own Orca. A second person installs the kit, clones the repo and opens it: the first session reports the `orca_repo` and `automations` gaps, and the agent fixes both with `wk adopt`, which changes no committed file.
 
 ## Good to know
 

@@ -66,7 +66,7 @@ old_capsule() {
 
   second_person
   run "$kit/bin/wk" doctor
-  is "$(grep -v '^vision:' <<<"$output" | cut -d: -f1 | paste -sd' ' -)" "orca_repo shared_values"
+  is "$(grep -v '^vision:' <<<"$output" | cut -d: -f1 | paste -sd' ' -)" "orca_repo shared_values automations"
   run "$kit/libexec/wk-adopt"
   [ "$status" -eq 0 ]
   [[ "$output" == *"removed orca_repo_id from .workspace-kit.toml"* ]]
@@ -82,7 +82,7 @@ old_capsule() {
   rm -r "$state"
   git worktree add -q "$HOME/projects/ticket" -b ticket
   cd "$HOME/projects/ticket" || return 1
-  is "$("$kit/bin/wk" doctor | grep -v '^vision:' | cut -d: -f1)" "orca_repo"
+  is "$("$kit/bin/wk" doctor | grep -v '^vision:' | cut -d: -f1 | paste -sd' ' -)" "orca_repo automations"
   run "$kit/libexec/wk-adopt"
   [ "$status" -eq 0 ]
   [[ "$output" == *"kept    orca_repo_id in this worktree's .workspace-kit.toml"* ]]
