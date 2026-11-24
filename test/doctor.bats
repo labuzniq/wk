@@ -160,6 +160,69 @@ gaps() {
   [[ "$output" == *"_proposals/a.md "*"_proposals/b.md" ]]
 }
 
+# correction <key> <layer> <count>: a correction record in the vault, seen in that many sessions.
+correction() {
+  local n
+  mkdir -p knowledge-base/wiki/corrections
+  {
+    printf -- '---\ntype: correction\nupdated: 2026-01-01\nlayer: %s\nsources:\n' "$2"
+    for n in $(seq "$3"); do
+      touch "knowledge-base/raw/sessions/s$n.md"
+      printf '  - raw/sessions/s%s.md\n' "$n"
+    done
+    printf -- '---\n# %s\n' "$1"
+  } > "knowledge-base/wiki/corrections/$1.md"
+}
+
+@test "a correction seen in three sessions is a gap the agent fixes itself, and the line names the record" {
+  correction uv-not-pip check 3
+  run "$kit/bin/wk" doctor
+  [[ "$output" == "correction-uv-not-pip: corrected in 3 sessions (cheapest layer: check); "*"wiki/corrections/uv-not-pip.md"* ]]
+  [[ "$output" != *"needs the user"* ]]
+}
+
+@test "a due correction that needs a design change is a gap that needs the user" {
+  correction one-config-file design 3
+  run "$kit/bin/wk" doctor
+  [[ "$output" == "correction-one-config-file: corrected in 3 sessions (cheapest layer: design); needs the user"* ]]
+}
+
+@test "a correction corrected again after its check is a gap that names the commit" {
+  mkdir -p knowledge-base/wiki/corrections
+  for name in 2026-01-01-demo-aaaa1111 2026-01-02-demo-bbbb2222 2026-01-09-demo-cccc3333; do
+    touch "knowledge-base/raw/sessions/$name.md"
+  done
+  printf -- '---\nlayer: check\nsources:\n  - raw/sessions/2026-01-01-demo-aaaa1111.md\n  - raw/sessions/2026-01-02-demo-bbbb2222.md\n  - raw/sessions/2026-01-09-demo-cccc3333.md\n---\n' \
+    > knowledge-base/wiki/corrections/uv-not-pip.md
+  GIT_COMMITTER_DATE="2026-01-04T12:00:00Z" git commit -q --allow-empty -m "test: uv, not pip" -m "Correction: uv-not-pip"
+  run "$kit/bin/wk" doctor
+  [[ "$output" == "correction-uv-not-pip: corrected again after $(git rev-parse --short HEAD), "*"make the check catch it"* ]]
+}
+
+@test "a correction seen in two sessions is no gap" {
+  correction uv-not-pip check 2
+  is "$(gaps)" ""
+}
+
+@test "a correction whose check is committed is no gap" {
+  correction uv-not-pip check 3
+  git commit -q --allow-empty -m "test: uv, not pip" -m "Correction: uv-not-pip"
+  is "$(gaps)" ""
+}
+
+@test "a correction the user skipped is not reported, the others are" {
+  correction uv-not-pip check 3
+  correction tabs prose 4
+  echo 'correction-uv-not-pip = "pip is fine here"' >> .workspace-kit.toml
+  is "$(gaps)" "correction-tabs"
+}
+
+@test "a broken correction record is a gap that says how to fix it" {
+  correction uv-not-pip hook 1
+  run "$kit/bin/wk" doctor
+  [[ "$output" == "correction-uv-not-pip: the record "*"is broken: layer must be design, check, proof or prose"* ]]
+}
+
 @test "a check listed under [skip] is not reported" {
   rm CLAUDE.md
   echo 'claude_md = "no instructions wanted here"' >> .workspace-kit.toml

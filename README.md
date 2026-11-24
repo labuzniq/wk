@@ -8,6 +8,7 @@ One repeatable setup for every project, built around [Orca](https://orca.dev) an
 - **Orca owns worktrees and tasks.** Every worktree Claude Code creates becomes an Orca workspace card. Cards move to `in-progress`, `in-review` and `completed` from commits and pull request state, after every agent turn.
 - **Idea to tickets.** The agent follows [Matt Pocock's skills](https://github.com/mattpocock/skills) (`ask-matt`, `to-spec`, `to-tickets`, `implement`…) itself; tickets are issues in the project's tracker (GitHub, GitLab or local files), specs live in `docs/specs/`, and a workspace is created when work on a ticket starts.
 - **Review gate.** Before a pull request the agent first gathers proof that the change works (test output, a run of the app, a screenshot) and puts it in the pull request; then the review agents run. Eleven review and build-fix agents from [ECC](https://github.com/affaan-m/ECC), pinned to one commit, with skills preloaded.
+- **Corrections become checks.** Wiki ingest keeps one record per correction you make. Below three sessions a proposal waits for your yes or no. At three, the agent writes a check that fails on the old mistake, commits it alone and tells you how to revert it.
 - **Session capture.** Finished sessions are queued and turned into a per-project wiki (the [LLM wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)) by a daily Orca automation.
 
 ## Requirements
@@ -45,6 +46,7 @@ Then do the three manual Orca settings in [`docs/orca-settings.md`](docs/orca-se
 | `wk agents-sync` | Install the pinned ECC agents, with their recorded patches |
 | `wk skills-sync` | Install the pinned third-party skills, with their recorded patches |
 | `wk transcript <file>` | Print what was said in a Claude Code transcript |
+| `wk corrections` | Count the sessions each correction was seen in; at three it is due to become a check |
 
 ## Checking the kit
 

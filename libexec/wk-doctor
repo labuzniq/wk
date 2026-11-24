@@ -99,3 +99,14 @@ done
 
 proposals=$(ls "$(vault_dir)/wiki/_proposals"/*.md 2>/dev/null || true)
 [ -z "$proposals" ] || gap proposals "needs the user: show each pending proposal and ask apply or reject: ${proposals//$'\n'/ }"
+
+records="$(vault_dir)/wiki/corrections"
+"$(dirname "$0")/wk-corrections" | while IFS=$'\t' read -r state key sessions layer note; do
+  record="$records/$key.md"
+  case "$state:$layer:$note" in
+    due:*:after*) gap "correction-$key" "corrected again $note, the commit that holds its check, so the check misses the mistake; make the check catch it, the way \`correction-check.md\` in the \`project-setup\` skill says. Record: $record" ;;
+    due:design:*) gap "correction-$key" "corrected in $sessions sessions (cheapest layer: design); needs the user: show $record and ask whether to make the design change" ;;
+    due:*) gap "correction-$key" "corrected in $sessions sessions (cheapest layer: $layer); make it a check now, the way \`correction-check.md\` in the \`project-setup\` skill says. Record: $record" ;;
+    broken:*) gap "correction-$key" "the record $record is broken: $note" ;;
+  esac
+done
