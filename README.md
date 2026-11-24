@@ -4,7 +4,7 @@ One repeatable setup for every project, built around [Orca](https://orca.dev) an
 
 ## What it does
 
-- **Project setup without commands.** On first open, the agent runs `wk adopt`: toolchain (`mise.toml`), worktree setup (`orca.yaml`), tracker config, a knowledge vault and two Orca automations.
+- **Project setup without commands.** On first open of a new folder, the agent runs `wk adopt`: toolchain (`mise.toml`), worktree setup (`orca.yaml`), tracker config, a knowledge vault and two Orca automations. An existing repo on GitHub gets the same capsule as a pull request (`wk adopt-pr`): merge it for yes, close it for no. Nothing lands on its default branch before you merge, and a closed pull request is never offered again.
 - **Orca owns worktrees and tasks.** Every worktree Claude Code creates becomes an Orca workspace card. Cards move to `in-progress`, `in-review` and `completed` from commits and pull request state, after every agent turn.
 - **Idea to tickets.** The agent follows [Matt Pocock's skills](https://github.com/mattpocock/skills) (`ask-matt`, `to-spec`, `to-tickets`, `implement`…) itself; tickets are issues in the project's tracker (GitHub, GitLab or local files), specs live in `docs/specs/`, and a workspace is created when work on a ticket starts.
 - **Review gate.** Before a pull request the agent first gathers proof that the change works (test output, a run of the app, a screenshot) and puts it in the pull request; then the review agents run. Eleven review and build-fix agents from [ECC](https://github.com/affaan-m/ECC), pinned to one commit, with skills preloaded.
@@ -36,6 +36,7 @@ Then do the three manual Orca settings in [`docs/orca-settings.md`](docs/orca-se
 |---|---|
 | `wk new <name>` | Create a project under the projects folder, with the capsule |
 | `wk adopt` | Add the capsule to the repo or folder you are in; keeps existing files |
+| `wk adopt-pr` | Offer the capsule to an existing repo as a pull request, on a branch in an Orca worktree |
 | `wk doctor` | Print one line per missing piece of the capsule |
 | `wk board-sync [--repo]` | Move Orca cards forward from git, pull request and issue state; bring new issue comments to the card |
 | `wk agents-sync` | Install the pinned ECC agents, with their recorded patches |

@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
-# Stand-in for gh in tests. Logs each call to $GH_STUB/calls. `gh pr view` answers from $GH_STUB/pr.json and `gh issue view` from $GH_STUB/issue.json; no such file means no pull request or issue. `gh pr edit` saves the new body to $GH_STUB/pr-body. A file $GH_STUB/down makes every call fail, like a lost network.
+# Stand-in for gh in tests. Logs each call to $GH_STUB/calls. Pull request 7 lives in $GH_STUB/pr.json and the issue in $GH_STUB/issue.json; no such file means no pull request or issue.
+# `gh pr create` opens the pull request, or fails when $GH_STUB/fail-create exists. `gh pr edit` saves the new body to $GH_STUB/pr-body. The repo owner and the signed-in user are "someone",
+# unless $GH_STUB/owner or $GH_STUB/me say otherwise. A file $GH_STUB/down makes every call fail, like a lost network.
 set -euo pipefail
-printf '%s\n' "$1 ${2:-} ${3:-} ${4:-} ${5:-}" >> "$GH_STUB/calls"
+printf '%s\n' "$*" >> "$GH_STUB/calls"
 [ ! -f "$GH_STUB/down" ] || { echo "gh stand-in: error connecting to api.github.com" >&2; exit 1; }
 unexpected() { echo "gh stand-in: unexpected call '$*'; teach test/stubs/gh the new form" >&2; exit 64; }
+url=https://github.com/someone/legacy/pull/7
 
 case "$1 ${2:-}" in
   "pr view")
-    [ "$#" = 5 ] && [ "$4 $5" = "--json state,reviewDecision,body,closingIssuesReferences" ] || unexpected "$@"
-    cat "$GH_STUB/pr.json"
+    case "${4:-} ${5:-} ${6:-}" in
+      "--json state,reviewDecision,body,closingIssuesReferences ") cat "$GH_STUB/pr.json" ;;
+      "--json state --jq") jq -r "$7" "$GH_STUB/pr.json" ;;
+      *) unexpected "$@" ;;
+    esac
     ;;
   "pr edit")
     [ "$#" = 5 ] && [ "$4" = "--body" ] || unexpected "$@"
@@ -18,5 +24,16 @@ case "$1 ${2:-}" in
     [ "$#" = 5 ] && [ "$4 $5" = "--json state,comments" ] || unexpected "$@"
     cat "$GH_STUB/issue.json"
     ;;
+  "pr list")
+    [ "${3:-} ${5:-} ${6:-} ${7:-} ${8:-} ${9:-}" = "--head --state open --json url --jq" ] || { echo "gh stand-in: unexpected call '$*'" >&2; exit 64; }
+    if [ "$(jq -r .state "$GH_STUB/pr.json" 2>/dev/null)" = OPEN ]; then echo "$url"; fi
+    ;;
+  "pr create")
+    [ ! -f "$GH_STUB/fail-create" ] || { echo "gh stand-in: pull request creation failed" >&2; exit 1; }
+    echo '{"state": "OPEN", "reviewDecision": ""}' > "$GH_STUB/pr.json"
+    echo "$url"
+    ;;
+  "repo view") cat "$GH_STUB/owner" 2>/dev/null || echo someone ;;
+  "api user") cat "$GH_STUB/me" 2>/dev/null || echo someone ;;
   *) echo "gh stand-in: no answer for '$*'; add it to test/stubs/gh" >&2; exit 64 ;;
 esac
