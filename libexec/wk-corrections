@@ -5,19 +5,13 @@ set -euo pipefail
 # shellcheck source=../lib/project.sh
 . "$(dirname "$0")/../lib/project.sh" && [ -f "$manifest" ] \
   || { echo "wk corrections: no .workspace-kit.toml here; run it inside a project" >&2; exit 1; }
+# shellcheck source=../lib/corrections.sh
+. "$(dirname "$0")/../lib/corrections.sh"
 
 due_at=3
 vault=$(vault_dir)
 newline=$'\n'
 tab=$'\t'
-trailer='(^|[[:space:]])Correction: [a-z0-9-]+$'
-
-# checks: one "<key> <commit> <date>" line per correction a commit names, newest commit first. One walk of the history for all records.
-checks() {
-  git -C "$root" log --all -E --grep="$trailer" --format='@@commit %h %cs%n%B' 2>/dev/null | awk -v trailer="$trailer" '
-    /^@@commit / { commit = $2 " " $3; next }
-    $0 ~ trailer && !seen[$NF]++ { print $NF, commit }' || true
-}
 checked=""
 
 for record in "$vault"/wiki/corrections/*.md; do
@@ -66,7 +60,7 @@ SESSIONS
   elif [[ ! "$layer" =~ ^(design|check|proof|prose)$ ]]; then
     state=broken note="layer must be design, check, proof or prose; set \`layer:\` to one of these words in the record's frontmatter"
   elif [ "$state" = due ]; then
-    [ -n "$checked" ] || checked="$newline$(checks)$newline"
+    [ -n "$checked" ] || checked="$newline$(correction_commits "$root")$newline"
     case "$checked" in *"$newline$key "*)
       commit=${checked#*"$newline$key "}
       commit=${commit%%"$newline"*}

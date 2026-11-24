@@ -307,3 +307,12 @@ Claude Code 2.1.311. The list of rules, and which hook checks which, is in `docs
 - The check knows a project by its capsule (`.workspace-kit.toml`, up to three levels under the projects folder: its folder name and its slug) and by its session queue folder. A folder that only groups projects is not a name. Customers, people, repo addresses and code are not something the check can see; the skill text and the vault's schema carry that rule.
 - open: every project's ingest runs at 07:30 and may write the shared vault in the same minutes. The skill keeps that step short (new source files first, wiki pages and the commit in one go at the end); two runs have not been tried side by side.
 - Found on the way: on bash 3.2 a failing `[[ … ]]` in the middle of a bats test does not fail the test. The new tests use `has` and `lacks` from `test/helpers.bash`; the older tests still hold such lines.
+
+## Corrections reach the kit (2026-11-24)
+
+- confirmed: `git clone` of a repo shares its first commit, so a checksum of the first commit and the slug names the same project in every clone and on every Mac, and names no project by itself. Two projects made from one template repo with the same slug would count as one. Tested by `test/kit-correction.bats`.
+- confirmed: `wk shared-vault check` prints nothing for a shared record whose projects are listed by that id, with the project names in the projects folder. Tested by `test/kit-correction.bats`.
+- confirmed: after `git clone`, `git symbolic-ref --short refs/remotes/origin/HEAD` prints `origin/<default branch>` (git 2.48 on this Mac, with a local bare repo as origin).
+- open: no real pull request was opened by `wk kit-correction offer`; the push goes to a local bare repo and `gh pr create` to the stand-in in the tests, because the ticket forbids a real one. The first real offer is the test.
+- open: whether `gh pr create`, run in the clone, picks the kit's repo on GitHub without `--repo`. It does for `wk pins-update`, which also runs in a clone of the kit; not tested for this command.
+- open: no real ingest has written a shared record yet; the record form and the skill texts are tested only through `wk kit-correction` and `wk doctor` with hand-made records.
