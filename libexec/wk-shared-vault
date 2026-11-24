@@ -158,7 +158,7 @@ if ! jq -e --arg name "$name" '.result.automations | any(.name == $name)' <<<"$a
   echo "kept automation '$name' removed (created before; delete $stamp to have it created again)"
 elif ! jq -e --arg name "$name" '.result.automations | any(.name == $name)' <<<"$automations" >/dev/null; then
   orca automations create --name "$name" --trigger "0 10 * * 6" --prompt "Run the wiki-lint skill, then stop." \
-    --provider claude --workspace "path:$vault" --fresh-session --enabled --json >/dev/null
+    --provider claude --extra-agent-args="--model sonnet" --workspace "path:$vault" --fresh-session --enabled --json >/dev/null
   echo "created automation '$name'"
 elif [ -f "$stamp" ] && [ "$(cat "$stamp")" != "$configured" ]; then
   echo "shared-vault: the automation '$name' still runs in $(cat "$stamp"). Remove it (\`orca automations list\`, then \`orca automations remove <id>\`) and run \`wk shared-vault\` again." >&2

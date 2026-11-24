@@ -165,7 +165,7 @@ changes() { grep -E '^(wrote|moved|added|merged|linked|backed up|created|allowed
   created=$(grep "^automations create --name Pin update " "$ORCA_STUB/calls")
   [[ "$created" == *"--trigger weekly --day 1 --time 08:00"* ]]
   [[ "$created" == *'Run `wk pins-update`.'* ]]
-  [[ "$created" == *"--provider claude --workspace path:$copy --fresh-session --enabled"* ]]
+  [[ "$created" == *"--provider claude --extra-agent-args=--model haiku --workspace path:$copy --fresh-session --enabled"* ]]
   is "$(jq -r '.[].path' "$ORCA_STUB/repos.json")" "$copy"$'\n'"$vault"
 }
 
