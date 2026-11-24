@@ -21,6 +21,7 @@ setup_home() {
   mkdir -p "$HOME/.config/workspace-kit" "$HOME/projects" "$ORCA_STUB" "$GH_STUB" "$NPX_STUB"
   echo '[]' > "$ORCA_STUB/repos.json"
   echo '[]' > "$ORCA_STUB/automations.json"
+  echo '[]' > "$GH_STUB/prs.json"
   touch "$ORCA_STUB/calls" "$GH_STUB/calls" "$NPX_STUB/calls"
   printf '[user]\n  name = Test\n  email = test@example.com\n[init]\n  defaultBranch = main\n' > "$HOME/.gitconfig"
   printf 'projects_root = "%s"\nkit = "%s"\n' "$HOME/projects" "$HOME/kit" > "$HOME/.config/workspace-kit/config.toml"

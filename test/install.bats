@@ -1,5 +1,6 @@
 #!/usr/bin/env bats
-# `install.sh` in a throwaway HOME: the config, the global instructions and the settings. Skill and agent syncs are stand-ins.
+# `install.sh` in a throwaway HOME: the config, the global instructions, the settings and the weekly pin update in Orca.
+# Skill and agent syncs are stand-ins.
 
 # shellcheck disable=SC2154 # kit and the helpers come from helpers.bash
 load helpers
@@ -97,4 +98,51 @@ changes() { grep -E '^(wrote|moved|added|merged|linked|backed up) ' <<<"$output"
   install
   run "$kit/bin/wk" doctor
   [[ "$output" != *instructions:* ]]
+}
+
+@test "the installer creates the weekly pin update automation in the kit's own workspace" {
+  install
+  [ "$status" -eq 0 ]
+  is "$(jq -r '.[].name' "$ORCA_STUB/automations.json")" "Pin update"
+  [[ "$output" == *"created automation 'Pin update'"* ]]
+  created=$(grep "^automations create" "$ORCA_STUB/calls")
+  [[ "$created" == *"--trigger weekly --day 1 --time 08:00"* ]]
+  [[ "$created" == *'Run `wk pins-update`.'* ]]
+  [[ "$created" == *"--provider claude --workspace path:$copy --fresh-session --enabled"* ]]
+  is "$(jq -r '.[].path' "$ORCA_STUB/repos.json")" "$copy"
+}
+
+@test "a second install creates no second automation" {
+  install
+  install
+  [ "$status" -eq 0 ]
+  is "$(jq length "$ORCA_STUB/automations.json")" 1
+  is "$(jq length "$ORCA_STUB/repos.json")" 1
+  [[ "$output" != *"created automation"* ]]
+}
+
+@test "an automation that is already in Orca is kept and named" {
+  echo '[{"name": "Pin update"}]' > "$ORCA_STUB/automations.json"
+  install
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"kept automation 'Pin update'"* ]]
+  is "$(jq length "$ORCA_STUB/automations.json")" 1
+}
+
+@test "an automation the owner removed is not created again" {
+  install
+  echo '[]' > "$ORCA_STUB/automations.json"
+  install
+  [ "$status" -eq 0 ]
+  is "$(jq length "$ORCA_STUB/automations.json")" 0
+  [[ "$output" == *"kept automation 'Pin update' (created before; delete $HOME/.local/state/workspace-kit/pin-update-automation"* ]]
+}
+
+@test "when Orca does not answer, the install goes on and says the automation is not created" {
+  touch "$ORCA_STUB/down"
+  install
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Orca gave no list of automations, so 'Pin update' is not created; start Orca and run install.sh again"* ]]
+  [ -L "$HOME/.local/bin/wk" ]
+  [ ! -e "$HOME/.local/state/workspace-kit/pin-update-automation" ]
 }

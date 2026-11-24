@@ -41,7 +41,8 @@ case "$1 ${2:-}" in
       shift
     done
     ;;
-  "automations list") jq -c '{result: {automations: .}}' "$ORCA_STUB/automations.json" ;;
+  "automations list") [ ! -f "$ORCA_STUB/down" ] || { echo "orca stand-in: Orca is not running" >&2; exit 1; }
+    jq -c '{result: {automations: .}}' "$ORCA_STUB/automations.json" ;;
   "automations create")
     jq -c --arg name "$4" '. + [{name: $name}]' "$ORCA_STUB/automations.json" > "$ORCA_STUB/automations.json.new"
     mv "$ORCA_STUB/automations.json.new" "$ORCA_STUB/automations.json"
