@@ -203,6 +203,10 @@ def create_automations(root: Path, vault: Path, slug: str) -> None:
         run("orca", "automations", "create", "--name", name, *flags, "--provider", "claude",
             "--workspace", f"path:{root}", "--fresh-session", "--enabled", "--json")
         print(f"created automation '{name}'")
+    # `wk doctor` may not wait on Orca, so it reads this marker.
+    marker = Path.home() / ".local/state/workspace-kit/automations" / hashlib.sha1(str(root).encode()).hexdigest()
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.touch()
 
 
 def allow_vault(settings_file: Path, vault: Path) -> None:
@@ -266,9 +270,12 @@ def main() -> None:
     create_vault(root / "knowledge-base", slug)
     ignore(root)
     vault = primary / "knowledge-base"
-    for checkout in {root, primary}:
-        allow_vault(checkout / ".claude/settings.local.json", vault)
-    create_automations(primary, vault, slug)
+    allow_vault(root / ".claude/settings.local.json", vault)
+    if (primary / ".workspace-kit.toml").exists():
+        allow_vault(primary / ".claude/settings.local.json", vault)
+        create_automations(primary, vault, slug)
+    else:
+        print("waiting for the merge: the Orca automations and the vault permission in the main checkout")
     if args.agents:
         subprocess.run([str(KIT / "bin/wk"), "agents-sync", "--project", str(root), *args.agents], check=True)
 
