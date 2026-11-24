@@ -13,7 +13,7 @@ Run from the project's primary checkout. The **vault** is the folder named by `v
    2. Write `raw/sessions/<date>-<slug>-<first 8 characters of session_id>.md`: what was asked, what was decided and why, what was learned, where the user corrected the agent, open questions.
    3. Update the wiki from that summary: existing pages first, usually `wiki/learnings.md` and `wiki/overview.md`, then concept, entity or how-to pages.
    4. Follow-up work found in the session goes on its Orca card, never into the wiki: read the card with `orca worktree show --worktree id:<orca_worktree_id> --json`, then set the same comment with the item added to its `follow-ups:` line.
-   5. Where the user corrected the agent, or the same mistake shows in two session summaries, write `wiki/_proposals/<date>-<topic>.md`: the evidence, and the exact edit to a `CLAUDE.md`, to the kit's `agents/agents.toml`, or to a kit skill (`project-setup`, `wiki-ingest`, `wiki-lint`). Third-party skills are out of bounds for proposals.
+   5. Where the user corrected the agent, keep a correction record for each correction, the way [corrections.md](corrections.md) says. Completion: `wk corrections` prints a line for each correction of this session, none of them `broken`.
    6. Move the queue file to `../processed/`.
 5. Ingest every file in `raw/inbox/` and `raw/sources/` that git shows as new or changed, the same way as step 4.3.
 6. Add an `index.md` line for each new page and one `log.md` entry per ingested item.
