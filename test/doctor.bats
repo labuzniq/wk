@@ -205,3 +205,10 @@ old_python_project() {
   echo 'starter_checks = "this project lints in CI only"' >> .workspace-kit.toml
   is "$(gaps)" ""
 }
+
+@test "a project adopted as an empty folder is offered the starter checks once it has a stack" {
+  echo '{}' > package.json
+  is "$(gaps)" "starter_checks"
+  "$kit/libexec/wk-adopt" > /dev/null
+  [ -f checks/starter/ts.json ]
+}

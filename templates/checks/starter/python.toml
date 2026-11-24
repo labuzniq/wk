@@ -1,4 +1,7 @@
 # Starter checks for Python, run by the lint task in mise.toml. Each rule is explained in python.txt.
+# Folders these checks do not read, such as generated code. Paths are relative to the project root.
+extend-exclude = []
+
 [lint]
 select = ["E722", "BLE001", "S110", "T201", "PGH003", "PGH004"]
 

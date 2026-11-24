@@ -5,6 +5,7 @@ only_rules:
   - force_try
   - force_cast
   - custom_rules
+allow_zero_lintable_files: true
 excluded:
   - ../../.build
   - ../../DerivedData
@@ -12,10 +13,10 @@ excluded:
 custom_rules:
   empty_catch:
     name: "Empty catch"
-    regex: 'catch\s*(\([^)]*\)\s*)?\{\s*\}'
+    regex: 'catch[^{}]*\{\s*\}'
     message: "An empty `catch` makes the error disappear. Handle the error, throw it again, or log it with the reason it is safe to ignore."
   debug_print:
     name: "Debug print"
-    regex: '\b(print|debugPrint|dump)\('
+    regex: '(?<![.\w])(print|debugPrint|dump)\('
     match_kinds: identifier
     message: "A `print` left in the code. Delete it, or log through `Logger` (import os) when the line is worth keeping."

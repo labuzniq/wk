@@ -84,6 +84,8 @@ snapshot() {
   [[ "$output" == *"created checks/starter/python.toml"* ]]
   [[ "$output" == *"added starter checks for python: E722, BLE001, S110, T201, PGH003, PGH004"* ]]
   is "$(grep -A1 '^\[tasks.lint\]' mise.toml | grep -c 'ruff check --config checks/starter/python.toml || { cat checks/starter/python.txt; exit 1; }')" 1
+  # first in the list: mise stops at the first command that fails, and the project's own linter may not be installed yet
+  grep -q '^run = \["mise x ruff@.*", "uv run ruff check"\]$' mise.toml
   [[ "$output" != *"does not run the starter checks"* ]]
 }
 
@@ -147,10 +149,10 @@ snapshot() {
   done
 }
 
-@test "a kept manifest decides which stacks get starter checks" {
+@test "a stack the kept manifest names and a stack found later both get starter checks" {
   "$kit/libexec/wk-adopt"
   sed -i '' 's/^stack = .*/stack = ["swift"]/' .workspace-kit.toml
   echo '[project]' > pyproject.toml
   run "$kit/libexec/wk-adopt"
-  is "$(cd checks/starter && echo *)" "swift.txt swift.yml"
+  is "$(cd checks/starter && echo *)" "python.toml python.txt swift.txt swift.yml"
 }

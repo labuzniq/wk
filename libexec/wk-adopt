@@ -89,7 +89,8 @@ def mise_toml(slug: str, stacks: list[str], root: Path) -> str:
     lines = ["[tools]", *(f'{name} = "{version}"' for name, version in tools.items()), ""]
     lines += ["[env]", '_.file = ".env"', f'PROJECT_SLUG = "{slug}"', ""]
     for task in ("setup", "test", "lint"):
-        runs = [c[task] for c in commands if task in c] + ([starter_command(s) for s in stacks] if task == "lint" else [])
+        # The starter checks run first: they need nothing from the project, and mise stops at the first command that fails.
+        runs = ([starter_command(s) for s in stacks] if task == "lint" else []) + [c[task] for c in commands if task in c]
         lines += [f"[tasks.{task}]", f"run = {toml_list(runs)}", ""]
     lines += ['[tasks."board:sync"]', 'run = "wk board-sync --repo"', "", "[tasks.doctor]", 'run = "wk doctor"', ""]
     return "\n".join(lines)
@@ -241,8 +242,9 @@ def main() -> None:
     run("orca", "repo", "set-base-ref", "--repo", f"id:{repo_id}", "--ref", base, "--json")
 
     write_new(root / ".workspace-kit.toml", manifest(slug, args.type, stacks, repo_id))
-    if args.stack is None:  # a manifest that was kept names the stacks; the doctor reads them from there too
-        stacks = [s for s in tomllib.loads((root / ".workspace-kit.toml").read_text()).get("stack", stacks) if s in STACKS]
+    # A kept manifest may name other stacks than this run found; the doctor asks for the starter checks of both.
+    named = tomllib.loads((root / ".workspace-kit.toml").read_text()).get("stack", [])
+    stacks = [s for s in STACKS if s in stacks or s in named]
     write_new(root / "mise.toml", mise_toml(slug, stacks, root))
     write_new(root / "orca.yaml", ORCA_YAML)
     starter_checks(root, stacks)

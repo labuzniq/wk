@@ -167,4 +167,8 @@ Each config in `templates/checks/starter/` was run on this Mac in a throwaway pr
 - ruff cannot change the text of a rule's message, and SwiftLint only for its custom rules. So each stack has a messages file that the lint task prints on failure, after the linter's own lines.
 - open: the starter command inside an Orca worktree and in a project's CI (Continuous Integration); both need `mise` and network on the first run. Not tested: it needs a real adopted project.
 - open: Biome and SwiftLint on a large real project (noise from `noEmptyBlockStatements` on empty functions, speed). Tested on throwaway files only.
-- The tests in `test/` check the files, the lint task and the gap line; they do not run the linters, so they need no network.
+- confirmed: a folder is kept out of the starter checks with `extend-exclude` (ruff, path relative to the project root), `"!<folder>"` in `files.includes` (Biome) and `excluded` (SwiftLint). The project's own excludes are not read, because `--config` replaces the project's config. Each messages file says where to add a folder.
+- confirmed (SwiftLint 0.65.1): with no Swift file the run fails with "No lintable files found"; `allow_zero_lintable_files: true` makes it pass. ruff and Biome pass with no file.
+- confirmed (Biome 2.6.8): `// biome-ignore lint/suspicious/noConsole: <reason>` on the line above switches the rule off for that line.
+- The starter command is first in the lint task: mise stops at the first command that fails, and the project's own linter may not be installed yet.
+- The tests in `test/` need no network. `test/starter-checks.bats` runs the real ruff from the uv cache (`uvx --offline`; `test/run` fills the cache in its Python lint step) and the real SwiftLint when it is installed; each test is skipped when its tool is missing. Biome is not run by the tests.
