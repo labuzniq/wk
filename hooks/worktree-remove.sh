@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Removes a Claude Code worktree through Orca only when it holds no work.
+# Removes a Claude Code worktree through Orca only when it holds no work. The one exception to the 14-day rule of `wk worktree-cleanup`.
 set -euo pipefail
 path=$(jq -r '.worktree_path')
 card=$(orca worktree show --worktree "path:$path" --json | jq -c '.result.worktree')
