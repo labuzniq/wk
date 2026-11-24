@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The shared vault holds lessons across projects. No argument: create it once, keep an existing one. `path`: print where it is. `check`: list private details in it.
+# The shared vault holds lessons across projects. No argument: create it once, keep an existing one. `path`: print where it is. `check [folder]`: list private details in it, or in the folder.
 set -euo pipefail
 kit="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=../lib/config.sh
@@ -24,13 +24,13 @@ project_names() {
   done
 }
 
-# Prints one line per private detail: a project's name, or a path that names the home folder.
+# check [folder]: prints one line per private detail in the vault, or in the folder: a project's name, or a path that names the home folder.
 check() {
   local projects_root words found=0 word hits hit
-  cd "$vault"
   projects_root=$(wk_config projects_root)
   words=$(project_names "$projects_root" | sort -u | grep -vixF -e "$(basename "$kit")" || true)
-  [ ! -f .allowed-words ] || words=$(printf '%s\n' "$words" | grep -vixFf .allowed-words || true)
+  [ ! -f "$vault/.allowed-words" ] || words=$(printf '%s\n' "$words" | grep -vixFf "$vault/.allowed-words" || true)
+  cd "${1:-$vault}"
   while IFS= read -r word; do
     [ -n "$word" ] || continue
     hits=$(grep -rniwF --exclude-dir=.git --exclude=.allowed-words -e "$word" . | cut -d: -f1,2 || true)
@@ -53,11 +53,11 @@ case "${1:-}" in
   path | check)
     [ -n "$vault" ] && [ -d "$vault" ] || { echo "shared-vault: there is no shared vault yet; run \`wk shared-vault\`" >&2; exit 1; }
     vault=$(cd "$vault" && pwd -P)
-    if [ "$1" = path ]; then echo "$vault"; else check; fi
+    if [ "$1" = path ]; then echo "$vault"; else check "${2:-}"; fi
     exit
     ;;
   "") ;;
-  *) echo "usage: wk shared-vault [path|check]" >&2; exit 2 ;;
+  *) echo "usage: wk shared-vault [path|check [folder]]" >&2; exit 2 ;;
 esac
 
 if [ -z "$vault" ]; then

@@ -5,6 +5,7 @@ This vault is the wiki of the tools every project uses: Orca, the agents (Claude
 ## Layers
 - `raw/` is add-only once committed: add files; the one later edit allowed is `wiki-lint` rewording a private detail. `raw/sessions/` one extract per agent session that taught a tool lesson, `raw/inbox/` one extract per note that did, `raw/sources/` articles and docs. `wiki-ingest` writes these files from a project; nothing is dropped here by hand.
 - `wiki/` is written only by the `wiki-ingest` and `wiki-lint` skills. `overview.md` is the page of the tools, `learnings.md` the gotchas and lessons, `concepts/`, `entities/` (tools and systems), `howto/`.
+- `wiki/corrections/` holds one record per correction about a tool, `<key>.md`. Its `projects` list holds one id per project it was seen in, written only by `wk kit-correction add`; at three projects the fix is offered to the kit.
 - `index.md` lists every wiki page, one line each, by category. `log.md` is append-only: `## [YYYY-MM-DD] ingest|lint | <title>`.
 
 ## Page rules

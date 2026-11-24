@@ -24,7 +24,7 @@ A **lesson** is one thing learned. Each lesson has one home:
 5. Ingest every file in `raw/inbox/` and `raw/sources/` that git shows as new or changed, the same way as steps 4.3 and 4.4. The shared source of its tool lessons is a new file in the shared vault, `raw/inbox/<date>-<topic>.md`.
 6. Add an `index.md` line for each new page and one `log.md` entry per ingested item.
 7. Commit the vault alone: `git -C <vault> add -A . && git -C <vault> commit -m "docs(wiki): ingest <date>"`.
-8. When steps 4.4 and 5 wrote shared source files, finish the shared vault in one go, because other projects' ingests write it on the same morning:
+8. When steps 4.4, 4.6 and 5 wrote shared files, finish the shared vault in one go, because other projects' ingests write it on the same morning:
    1. Read its `index.md`, then update its wiki from the new source files: `wiki/learnings.md` first, each claim linked to its source file. Add the `index.md` and `log.md` lines.
    2. Run `wk shared-vault check`. Reword every line it prints; a lesson that cannot lose the word moves to the vault as a project lesson (then repeat step 7). Completion: the check prints nothing.
    3. Commit the shared vault alone, without pushing: `git -C <shared vault> add -A . && git -C <shared vault> commit -m "docs(wiki): ingest <date>"`. The commit runs the same check. When it fails on the check or on `index.lock`, repeat from 8.2.

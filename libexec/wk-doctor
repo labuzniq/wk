@@ -112,3 +112,11 @@ records="$(vault_dir)/wiki/corrections"
     broken:*) gap "correction-$key" "the record $record is broken: $note" ;;
   esac
 done
+
+[ ! -d "$shared_vault/wiki/corrections" ] || "$(dirname "$0")/wk-kit-correction" | while IFS=$'\t' read -r state key projects layer note; do
+  record="$shared_vault/wiki/corrections/$key.md"
+  case "$state" in
+    due) gap "kit-correction-$key" "seen in $projects projects (cheapest layer: $layer); offer the fix to the kit the way \`kit-correction.md\` in the \`project-setup\` skill says. Record: $record" ;;
+    broken) gap "kit-correction-$key" "the shared record $record is broken: $note" ;;
+  esac
+done
