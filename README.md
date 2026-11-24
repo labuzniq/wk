@@ -43,6 +43,8 @@ Then do the three manual Orca settings in [`docs/orca-settings.md`](docs/orca-se
 | `wk doctor` | Print one line per missing piece of the capsule |
 | `wk board-sync [--repo]` | Move Orca cards forward from git and pull request state |
 | `wk worktree-cleanup [--dry-run]` | Remove this project's worktrees whose branch is merged and whose card has been completed for 14 days; print each worktree and why it was removed or kept |
+| `wk self-merge` | In a project that opted in: merge this branch's pull request when checks, proof and review hold |
+| `wk self-merge record` | Store the proof and review result in the pull request body, for `wk self-merge` to read |
 | `wk agents-sync` | Install the pinned ECC agents, with their recorded patches |
 | `wk skills-sync` | Install the pinned third-party skills, with their recorded patches |
 | `wk transcript <file>` | Print what was said in a Claude Code transcript |
@@ -75,7 +77,7 @@ docs/            verified facts and the manual Orca checklist
 ## What a project gets
 
 ```
-.workspace-kit.toml   manifest: slug, stack, vault path, skipped checks
+.workspace-kit.toml   manifest: slug, stack, vault path, self-merge flag, skipped checks
 mise.toml             tools and tasks: setup, test, lint
 checks/               starter checks for the stack, run by the lint task; the project's own checks go beside them
 orca.yaml             setup script Orca runs in each new worktree
@@ -88,6 +90,20 @@ knowledge-base/       the vault: raw/ sources and wiki/ pages
 ## Sharing a project
 
 Everything the capsule commits works for everyone who clones the repo. What is true for one person only stays on their Mac: the Orca repo id in `~/.local/state/workspace-kit/repos/`, the vault permission in the gitignored `.claude/settings.local.json`, and the two wiki automations in their own Orca. A second person installs the kit, clones the repo and opens it: the first session reports the `orca_repo` and `automations` gaps, and the agent fixes both with `wk adopt`, which changes no committed file.
+
+## Self-merge (off by default)
+
+A project opts in with `self_merge = true` in `.workspace-kit.toml`, merged into its default branch. From then on the agent runs two commands after the review gate:
+
+1. `wk self-merge record --proof attached --findings low --agents code-review,security-reviewer` adds one line to the pull request body: `wk-gate: head=<commit> proof=… findings=… agents=…`. The line holds for that one commit; a new push needs a new review and a new record.
+2. `wk self-merge` merges the pull request (squash) when all of this holds, and completes the card:
+   - **Checks:** at least one check ran and passed on the head commit; none failed, none is still running.
+   - **Proof:** the record says `proof=attached`, and the body has text under `## Evidence`.
+   - **Review:** the record is for the head commit, and its highest open finding is `none` or `low`.
+
+It prints one line: `self-merged pull request #12 (<url>) as 1a2b3c4; to revert: gh pr revert 12`. When a condition fails, it names each one, merges nothing and leaves the card in review. Without the flag it says so and the pull request waits for you, as before.
+
+A pull request never switches this on for itself: the flag is read from GitHub's copy of the default branch. These pull requests always wait for you: one that changes a file that decides what the agent or the checks do (`.workspace-kit.toml`, `orca.yaml`, `mise.toml`, `CLAUDE.md`, `AGENTS.md`, `.mcp.json`, anything under `.github/`, `.claude/` or `hooks/`; the full list is at the top of `libexec/wk-self-merge`); one from a fork, opened by another account, into a branch other than the default one, or a draft. Branch protection still applies: the command never uses `--admin`.
 
 ## Good to know
 

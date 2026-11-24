@@ -122,7 +122,7 @@ def tracker_config(root: Path) -> None:
 def manifest(slug: str, project_type: str, stacks: list[str]) -> str:
     return (
         f'slug = "{slug}"\ntype = "{project_type}"\nstack = {toml_list(stacks)}\n'
-        'vault = "knowledge-base"\n\n'
+        'vault = "knowledge-base"\nself_merge = false\n\n'
         "[vision]\nmin_commits = 20\nrefresh_days = 90\n\n[skip]\n"
     )
 
