@@ -71,13 +71,27 @@ def stack_commands(stack: str, root: Path) -> dict:
     return {"tools": {}}
 
 
+# The linter behind each stack's starter checks, pinned to the version the configs in templates/checks/starter were tested with.
+STARTER = {
+    "python": "mise x ruff@0.17.6 -- ruff check --config checks/starter/python.toml",
+    "ts": "mise x biome@2.6.8 -- biome lint --config-path=checks/starter/ts.json",
+    "swift": "mise x swiftlint@0.65.1 -- swiftlint lint --strict --quiet --config checks/starter/swift.yml",
+}
+
+
+def starter_command(stack: str) -> str:
+    return f"{STARTER[stack]} || {{ cat checks/starter/{stack}.txt; exit 1; }}"
+
+
 def mise_toml(slug: str, stacks: list[str], root: Path) -> str:
     commands = [stack_commands(s, root) for s in stacks]
     tools = {name: version for c in commands for name, version in c["tools"].items()}
     lines = ["[tools]", *(f'{name} = "{version}"' for name, version in tools.items()), ""]
     lines += ["[env]", '_.file = ".env"', f'PROJECT_SLUG = "{slug}"', ""]
     for task in ("setup", "test", "lint"):
-        lines += [f"[tasks.{task}]", f"run = {toml_list([c[task] for c in commands if task in c])}", ""]
+        # The starter checks run first: they need nothing from the project, and mise stops at the first command that fails.
+        runs = ([starter_command(s) for s in stacks] if task == "lint" else []) + [c[task] for c in commands if task in c]
+        lines += [f"[tasks.{task}]", f"run = {toml_list(runs)}", ""]
     lines += ['[tasks."board:sync"]', 'run = "wk board-sync --repo"', "", "[tasks.doctor]", 'run = "wk doctor"', ""]
     return "\n".join(lines)
 
@@ -105,12 +119,46 @@ def tracker_config(root: Path) -> None:
         print("added Agent skills block to CLAUDE.md")
 
 
-def manifest(slug: str, project_type: str, stacks: list[str], repo_id: str) -> str:
+def manifest(slug: str, project_type: str, stacks: list[str]) -> str:
     return (
         f'slug = "{slug}"\ntype = "{project_type}"\nstack = {toml_list(stacks)}\n'
-        f'orca_repo_id = "{repo_id}"\nvault = "knowledge-base"\nself_merge = false\n\n'
+        'vault = "knowledge-base"\nself_merge = false\n\n'
         "[vision]\nmin_commits = 20\nrefresh_days = 90\n\n[skip]\n"
     )
+
+
+def remember_repo(primary: Path, repo_id: str) -> None:
+    """The Orca repo id is true for one person only: it lives in the state folder, never in the repo."""
+    record = STATE / "repos" / hashlib.sha1(str(primary).encode()).hexdigest()
+    text = f'orca_repo_id = "{repo_id}"\n'
+    if record.exists() and record.read_text() == text:
+        return
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text(text)
+    print(f"saved   the Orca repo id for this Mac in {record}")
+
+
+def drop_personal_values(root: Path, primary: Path) -> None:
+    """A capsule written before the split holds the Orca repo id of the person who adopted the repo."""
+    manifest_file = root / ".workspace-kit.toml"
+    text = manifest_file.read_text()
+    shared = re.sub(r"^orca_repo_id *=.*\n", "", text, flags=re.MULTILINE)
+    if root != primary:
+        # A worktree holds a ticket's branch; the clean-up of the capsule is not that ticket's change.
+        if shared != text:
+            print("kept    orca_repo_id in this worktree's .workspace-kit.toml; `wk adopt` in the primary checkout removes it")
+        return
+    if shared != text:
+        manifest_file.write_text(shared)
+        print("removed orca_repo_id from .workspace-kit.toml: it is true for one person only and now lives outside the repo; commit the change")
+    tracker = root / "docs/agents/issue-tracker.md"
+    text = tracker.read_text()
+    shared = text
+    for old, new in OLD_REPO_ID_TEXT.items():
+        shared = shared.replace(old, new)
+    if shared != text:
+        tracker.write_text(shared)
+        print("updated docs/agents/issue-tracker.md: the repo is named by its path, not by one person's Orca repo id; commit the change")
 
 
 def orca_repo_id(root: Path) -> str:
@@ -118,9 +166,16 @@ def orca_repo_id(root: Path) -> str:
     for repo in repos:
         if repo["path"] == str(root):
             return repo["id"]
-    return json.loads(run("orca", "repo", "add", "--path", str(root), "--json"))["result"]["repo"]["id"]
+    repo_id = json.loads(run("orca", "repo", "add", "--path", str(root), "--json"))["result"]["repo"]["id"]
+    print(f"added   {root} to Orca")
+    return repo_id
 
 
+STATE = Path.home() / ".local/state/workspace-kit"
+OLD_REPO_ID_TEXT = {
+    " The repo id is `orca_repo_id` in `.workspace-kit.toml`.": " Name the repo by the path of its primary checkout, the first line of `git worktree list`.",
+    "--repo id:<repoId> ": "--repo path:<primary checkout> ",
+}
 IGNORED = [".env", ".env.local", "mise.local.toml", ".claude/settings.local.json"]
 QUEUE = "~/.local/state/workspace-kit/sessions/{slug}/queue"
 AUTOMATIONS = {
@@ -130,6 +185,11 @@ AUTOMATIONS = {
         "--prompt", "Run the wiki-ingest skill on every queued session, then stop.",
     ],
     "Wiki lint: {slug}": ["--trigger", "0 9 * * 6", "--prompt", "Run the wiki-lint skill, then stop."],
+    "Worktree cleanup: {slug}": [
+        "--trigger", "daily", "--time", "08:00", "--missed-run-grace-minutes", "720",
+        "--precheck", 'cd "{root}" && "{kit}/bin/wk" worktree-cleanup --dry-run | grep -q "^would remove"', "--precheck-timeout", "300",
+        "--prompt", "Run `wk worktree-cleanup` in this folder once, print its output, then stop. Remove no worktree by hand.",
+    ],
 }
 
 
@@ -158,14 +218,14 @@ def create_automations(root: Path, vault: Path, slug: str) -> None:
         name = name_template.format(slug=slug)
         if name in existing:
             continue
-        flags = [flag.format(slug=slug, vault=vault) for flag in flags]
+        flags = [flag.format(slug=slug, vault=vault, root=root, kit=KIT) for flag in flags]
         run("orca", "automations", "create", "--name", name, *flags, "--provider", "claude",
             "--workspace", f"path:{root}", "--fresh-session", "--enabled", "--json")
         print(f"created automation '{name}'")
-    # `wk doctor` may not wait on Orca, so it reads this marker.
+    # `wk doctor` may not wait on Orca, so it reads this marker: the names of the automations the project has.
     marker = Path.home() / ".local/state/workspace-kit/automations" / hashlib.sha1(str(root).encode()).hexdigest()
     marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.touch()
+    marker.write_text("".join(name.format(slug=slug) + "\n" for name in AUTOMATIONS))
 
 
 def allow_vault(settings_file: Path, vault: Path) -> None:
@@ -179,13 +239,29 @@ def allow_vault(settings_file: Path, vault: Path) -> None:
     print(f"allowed the vault in {settings_file}")
 
 
-def write_new(path: Path, text: str) -> None:
+def write_new(path: Path, text: str, name: str = "") -> bool:
     if path.exists():
-        print(f"kept    {path.name}")
-        return
+        print(f"kept    {name or path.name}")
+        return False
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
-    print(f"created {path.name}")
+    print(f"created {name or path.name}")
+    return True
+
+
+def starter_checks(root: Path, stacks: list[str]) -> None:
+    templates = KIT / "templates/checks"
+    wired = (root / "mise.toml").read_text()
+    for stack in stacks:
+        files = sorted(templates.glob(f"starter/{stack}.*"))
+        created = [write_new(root / "checks/starter" / f.name, f.read_text(), f"checks/starter/{f.name}") for f in files]
+        if any(created):
+            checks = re.findall(r"^  (\S+) ", (root / f"checks/starter/{stack}.txt").read_text(), re.MULTILINE)
+            print(f"added starter checks for {stack}: {', '.join(checks)}")
+        if f"checks/starter/{stack}." not in wired:
+            print(f"kept    mise.toml: its lint task does not run the starter checks for {stack}; add this command to the run list of [tasks.lint]: {starter_command(stack)}")
+    if stacks:
+        write_new(root / "checks/README.md", (templates / "README.md").read_text(), "checks/README.md")
 
 
 def main() -> None:
@@ -204,16 +280,24 @@ def main() -> None:
         if stack not in STACKS:
             parser.error(f"unknown stack '{stack}'")
     primary = Path(run("git", "rev-parse", "--path-format=absolute", "--git-common-dir").strip()).parent
-    slug = primary.name.lower()
+    manifest_file = root / ".workspace-kit.toml"
+    # The slug names the session queue and the automations: a clone in a folder of another name keeps the committed one.
+    slug = (tomllib.loads(manifest_file.read_text()).get("slug") if manifest_file.exists() else None) or primary.name.lower()
     repo_id = orca_repo_id(primary)
     base = run("git", "-C", str(primary), "branch", "--show-current").strip()
     if "origin" in run("git", "-C", str(primary), "remote").split():
         base = f"origin/{base}"
     run("orca", "repo", "set-base-ref", "--repo", f"id:{repo_id}", "--ref", base, "--json")
+    print(f"set     the Orca base ref to {base}")
 
-    write_new(root / ".workspace-kit.toml", manifest(slug, args.type, stacks, repo_id))
+    remember_repo(primary, repo_id)
+    write_new(manifest_file, manifest(slug, args.type, stacks))
+    # A kept manifest may name other stacks than this run found; the doctor asks for the starter checks of both.
+    named = tomllib.loads(manifest_file.read_text()).get("stack", [])
+    stacks = [s for s in STACKS if s in stacks or s in named]
     write_new(root / "mise.toml", mise_toml(slug, stacks, root))
     write_new(root / "orca.yaml", ORCA_YAML)
+    starter_checks(root, stacks)
     tracker_config(root)
     for template in sorted(p for p in (KIT / "templates/project").rglob("*") if p.is_file()):
         target = root / template.relative_to(KIT / "templates/project")
@@ -221,6 +305,7 @@ def main() -> None:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(template, target)
             print(f"created {target.relative_to(root)}")
+    drop_personal_values(root, primary)
     create_vault(root / "knowledge-base", slug)
     ignore(root)
     vault = primary / "knowledge-base"

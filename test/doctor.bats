@@ -54,9 +54,14 @@ gaps() {
   is "$(gaps)" "mise"
 }
 
-@test "a manifest without an Orca repo id is a gap" {
-  sed -i '' '/^orca_repo_id/d' .workspace-kit.toml
+@test "a repo this person has not set up in their Orca is a gap" {
+  rm -r "$state/repos"
   is "$(gaps)" "orca_repo"
+}
+
+@test "global instructions that do not import the kit's shared part are a gap" {
+  echo "my own rules" > "$HOME/.claude/CLAUDE.md"
+  is "$(gaps)" "instructions"
 }
 
 @test "a missing .worktreeinclude is a gap" {
@@ -155,6 +160,69 @@ gaps() {
   [[ "$output" == *"_proposals/a.md "*"_proposals/b.md" ]]
 }
 
+# correction <key> <layer> <count>: a correction record in the vault, seen in that many sessions.
+correction() {
+  local n
+  mkdir -p knowledge-base/wiki/corrections
+  {
+    printf -- '---\ntype: correction\nupdated: 2026-01-01\nlayer: %s\nsources:\n' "$2"
+    for n in $(seq "$3"); do
+      touch "knowledge-base/raw/sessions/s$n.md"
+      printf '  - raw/sessions/s%s.md\n' "$n"
+    done
+    printf -- '---\n# %s\n' "$1"
+  } > "knowledge-base/wiki/corrections/$1.md"
+}
+
+@test "a correction seen in three sessions is a gap the agent fixes itself, and the line names the record" {
+  correction uv-not-pip check 3
+  run "$kit/bin/wk" doctor
+  [[ "$output" == "correction-uv-not-pip: corrected in 3 sessions (cheapest layer: check); "*"wiki/corrections/uv-not-pip.md"* ]]
+  [[ "$output" != *"needs the user"* ]]
+}
+
+@test "a due correction that needs a design change is a gap that needs the user" {
+  correction one-config-file design 3
+  run "$kit/bin/wk" doctor
+  [[ "$output" == "correction-one-config-file: corrected in 3 sessions (cheapest layer: design); needs the user"* ]]
+}
+
+@test "a correction corrected again after its check is a gap that names the commit" {
+  mkdir -p knowledge-base/wiki/corrections
+  for name in 2026-01-01-demo-aaaa1111 2026-01-02-demo-bbbb2222 2026-01-09-demo-cccc3333; do
+    touch "knowledge-base/raw/sessions/$name.md"
+  done
+  printf -- '---\nlayer: check\nsources:\n  - raw/sessions/2026-01-01-demo-aaaa1111.md\n  - raw/sessions/2026-01-02-demo-bbbb2222.md\n  - raw/sessions/2026-01-09-demo-cccc3333.md\n---\n' \
+    > knowledge-base/wiki/corrections/uv-not-pip.md
+  GIT_COMMITTER_DATE="2026-01-04T12:00:00Z" git commit -q --allow-empty -m "test: uv, not pip" -m "Correction: uv-not-pip"
+  run "$kit/bin/wk" doctor
+  [[ "$output" == "correction-uv-not-pip: corrected again after $(git rev-parse --short HEAD), "*"make the check catch it"* ]]
+}
+
+@test "a correction seen in two sessions is no gap" {
+  correction uv-not-pip check 2
+  is "$(gaps)" ""
+}
+
+@test "a correction whose check is committed is no gap" {
+  correction uv-not-pip check 3
+  git commit -q --allow-empty -m "test: uv, not pip" -m "Correction: uv-not-pip"
+  is "$(gaps)" ""
+}
+
+@test "a correction the user skipped is not reported, the others are" {
+  correction uv-not-pip check 3
+  correction tabs prose 4
+  echo 'correction-uv-not-pip = "pip is fine here"' >> .workspace-kit.toml
+  is "$(gaps)" "correction-tabs"
+}
+
+@test "a broken correction record is a gap that says how to fix it" {
+  correction uv-not-pip hook 1
+  run "$kit/bin/wk" doctor
+  [[ "$output" == "correction-uv-not-pip: the record "*"is broken: layer must be design, check, proof or prose"* ]]
+}
+
 @test "a check listed under [skip] is not reported" {
   rm CLAUDE.md
   echo 'claude_md = "no instructions wanted here"' >> .workspace-kit.toml
@@ -164,4 +232,51 @@ gaps() {
 @test "every gap is reported, one line each" {
   rm CLAUDE.md .worktreeinclude
   is "$(gaps)" "claude_md orca_files"
+}
+
+# old_python_project: a Python project whose mise.toml was written before the starter checks existed.
+old_python_project() {
+  echo '[project]' > pyproject.toml
+  sed -i '' 's/^stack = .*/stack = ["python"]/' .workspace-kit.toml
+  printf '\n[tasks.lint]\nrun = ["uv run ruff check"]\n' >> mise.toml
+}
+
+@test "a project adopted before the starter checks is offered them" {
+  old_python_project
+  run "$kit/bin/wk" doctor
+  is "$output" 'starter_checks: the lint task does not run the starter checks for python (a small lint set for the first mistakes a coding agent makes); run `wk adopt`, then add the command it prints to the lint task in mise.toml'
+}
+
+@test "starter checks that exist but are not in the lint task are a gap, until the printed command is added" {
+  old_python_project
+  command=$("$kit/libexec/wk-adopt" | sed -n 's/.*add this command to the run list of \[tasks.lint\]: //p')
+  is "$(gaps)" "starter_checks"
+  sed -i '' "s~^run = \[\"uv run ruff check\"\]~run = [\"uv run ruff check\", \"$command\"]~" mise.toml
+  is "$(gaps)" ""
+  run "$kit/libexec/wk-adopt"
+  [[ "$output" != *"does not run the starter checks"* ]]
+}
+
+@test "a lint task that names starter checks whose files are gone is a gap" {
+  old_python_project
+  echo 'run = ["ruff check --config checks/starter/python.toml"]' >> mise.toml
+  is "$(gaps)" "starter_checks"
+}
+
+@test "a stack the kit has no starter checks for is no gap" {
+  sed -i '' 's/^stack = .*/stack = ["rust"]/' .workspace-kit.toml
+  is "$(gaps)" ""
+}
+
+@test "the starter checks can be skipped with a reason" {
+  old_python_project
+  echo 'starter_checks = "this project lints in CI only"' >> .workspace-kit.toml
+  is "$(gaps)" ""
+}
+
+@test "a project adopted as an empty folder is offered the starter checks once it has a stack" {
+  echo '{}' > package.json
+  is "$(gaps)" "starter_checks"
+  "$kit/libexec/wk-adopt" > /dev/null
+  [ -f checks/starter/ts.json ]
 }

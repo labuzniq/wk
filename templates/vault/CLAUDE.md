@@ -5,6 +5,7 @@ This vault is the wiki of one project. `raw/` holds sources; `wiki/` holds what 
 ## Layers
 - `raw/` is add-only: add files, never edit them. `raw/inbox/` quick notes, `raw/sessions/` one summary per ingested agent session, `raw/sources/` articles, PDFs, exported notes.
 - `wiki/` is written only by the `wiki-ingest` and `wiki-lint` skills. `overview.md` is the project page, `learnings.md` the gotchas and lessons, `concepts/`, `entities/` (people and systems), `howto/`.
+- `wiki/corrections/` holds one record per correction the user made, `<key>.md`. `wk corrections` counts the session summaries in its `sources`; at three sessions the correction becomes a check.
 - `wiki/_proposals/` holds proposed edits to agent instructions, waiting for the user's yes or no.
 - `index.md` lists every wiki page, one line each, by category. `log.md` is append-only: `## [YYYY-MM-DD] ingest|lint | <title>`.
 
