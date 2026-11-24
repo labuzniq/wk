@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Stand-in for gh in tests. Logs each call to $GH_STUB/calls and answers from the files in $GH_STUB. Pull request 7 lives in $GH_STUB/pr.json; no such file means no pull request.
-# `gh pr create` opens it, or fails when $GH_STUB/fail-create exists. The repo owner and the signed-in user are "someone",
-# unless $GH_STUB/owner or $GH_STUB/me say otherwise.
+# Stand-in for gh in tests. Logs each call to $GH_STUB/calls and answers from the files in $GH_STUB. Pull request 7 lives in $GH_STUB/pr.json and the issue in $GH_STUB/issue.json; no such file means no pull request or issue.
+# `gh pr create` opens it, or fails when $GH_STUB/fail-create exists. `gh pr edit --body` also saves the new body to $GH_STUB/pr-body. The repo owner and the signed-in user are "someone",
+# unless $GH_STUB/owner or $GH_STUB/me say otherwise. A file $GH_STUB/down makes every call fail, like a lost network.
 set -euo pipefail
 printf '%s\n' "$*" >> "$GH_STUB/calls"
+[ ! -f "$GH_STUB/down" ] || { echo "gh stand-in: error connecting to api.github.com" >&2; exit 1; }
 url=https://github.com/someone/legacy/pull/7
 
 unknown() { echo "gh stand-in: no answer for '$*'; add it to test/stubs/gh" >&2; exit 64; }
@@ -31,8 +32,19 @@ case "$1 ${2:-}" in
     echo "$url"
     ;;
   "pr edit")
-    [ "${4:-}" = --body-file ] || unknown "$@"
-    pr_update --rawfile body "$5" '.body = $body'
+    [ $# -eq 5 ] || unknown "$@"
+    case "$4" in
+      --body-file) pr_update --rawfile body "$5" '.body = $body' ;;
+      --body)
+        printf '%s\n' "$5" > "$GH_STUB/pr-body"
+        pr_update --arg body "$5" '.body = $body'
+        ;;
+      *) unknown "$@" ;;
+    esac
+    ;;
+  "issue view")
+    [ $# -eq 5 ] && [ "$4 $5" = "--json state,comments" ] || unknown "$@"
+    cat "$GH_STUB/issue.json"
     ;;
   "pr merge")
     [ "${4:-} ${5:-}" = "--squash --match-head-commit" ] && [ $# -eq 6 ] || unknown "$@"

@@ -248,6 +248,26 @@ Claude Code 2.1.311. The list of rules, and which hook checks which, is in `docs
 - confirmed: `jq` needs more time with every word: a Bash call of 10,000 characters made only of quoted words took 0.7 seconds, one of 20,000 took 2 seconds. A usual long command (one heredoc of 430,000 characters) took 0.2 seconds. The hook therefore does not check input above 12,000 characters.
 - confirmed: `jq` 1.7.1 (the one macOS ships) runs `hooks/check-command.jq`: named groups, back references and lazy matching work in its regular expressions.
 
+## A workspace follows its issue (2026-11-23)
+
+- confirmed: a card with a linked GitHub issue has `linkedIssue: <number>` and `createdAt` (milliseconds since 1970) in `orca worktree current --json`, `orca worktree list --json` and `orca worktree show --json`. A card without one has `linkedIssue: null`. Read on this Mac from the cards of this repo.
+- confirmed: `gh pr view <branch> --json state,reviewDecision,body,closingIssuesReferences` lists the issues the merge will close as `closingIssuesReferences[].number`. Read from pull request #22 of this repo, whose body says `Closes #7`.
+- confirmed: `gh issue view <number> --json state,comments` gives `state` (`OPEN` or `CLOSED`) and, per comment, `id`, `author.login`, `body` and `createdAt` (such as `2026-03-02T21:43:46Z`). Read from a public repo.
+- docs: `gh pr edit <branch> --body <text>` replaces the body (`gh pr edit --help`). `orca worktree set --comment <text>` replaces the whole card comment (`orca worktree set --help`); there is no flag that adds a line.
+- open: GitHub documents that a closing word such as `Closes #7` closes the issue only when the pull request goes into the default branch. Not tested here. For a pull request into another branch the line is added once and the issue stays open after the merge.
+- open: `wk board-sync` was tested with stand-ins for `gh` and `orca`. No real pull request body was edited and no real card comment was written by it, because the rules of this ticket's work allowed one pull request and no issue comment.
+- confirmed: each comment in `gh issue view --json comments` also has `authorAssociation` (`OWNER`, `MEMBER`, `COLLABORATOR`, `NONE` and others). Read from a public repo. Only the text of an owner, member or collaborator is copied to the card, because the card comment is shown to the agent at session start. For anyone else the card gets the author and `(not a member of the project; text not copied)`.
+- confirmed: jq 1.7.1 on this Mac refuses a time with parts of a second (`2026-02-01T10:00:00.5Z`) in `fromdateiso8601`. The sync cuts that part off first.
+- `wk board-sync` asks GitHub for the issue at most once per 10 minutes per worktree, next to the question about the pull request. It runs in the background after each agent turn; the hooks themselves make no network call.
+- The question about the pull request is held back for 10 minutes only after an answer. While a pushed branch has no pull request, each sync asks again, so a pull request opened right after a sync is seen by the next one.
+- `Closes #<number>` is added to a pull request once per worktree (marker file `~/.local/state/workspace-kit/gh/<key>.named`). An owner who takes the line out keeps it out.
+- A completed card is asked about its issue too, so a comment on a reopened issue still reaches the card. Its status is not touched.
+- One copy of `wk board-sync` works on a card at a time (folder `~/.local/state/workspace-kit/gh/<key>.lock`): the session-start hook starts two copies at once. A folder left by a killed copy is taken over after 10 minutes.
+- Only a GitHub issue is followed. A card with a GitLab issue (`linkedGitLabIssue`) or with local ticket files has no `linkedIssue`, so nothing is asked.
+- `orca worktree set --comment` replaces the whole comment. The sync reads the card comment again right before it writes, but an agent that writes an older copy back after that removes the new line, and the line is not added a second time. The comment stays on the issue.
+- A comment written before the workspace was created is not put on the card: the agent reads the issue when it starts work.
+- An issue closed for any reason (done, not planned, duplicate) completes the card. A card that the owner moves back by hand while the issue stays closed is completed again on the next sync; reopen the issue to keep it open.
+
 ## Shared vault (2026-11-23)
 
 - confirmed: `wk shared-vault` in a throwaway home creates the vault as its own git repo, with one commit, and a second run changes nothing. `install.sh` was run in a throwaway home with stand-ins for `orca` and `npx` (`test/install.bats`); it was not run against the real home.

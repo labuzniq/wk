@@ -42,7 +42,7 @@ Then do the three manual Orca settings in [`docs/orca-settings.md`](docs/orca-se
 | `wk adopt` | Add the capsule to the repo or folder you are in; keeps existing files |
 | `wk adopt-pr` | Offer the capsule to an existing repo as a pull request, on a branch in an Orca worktree |
 | `wk doctor` | Print one line per missing piece of the capsule |
-| `wk board-sync [--repo]` | Move Orca cards forward from git and pull request state |
+| `wk board-sync [--repo]` | Move Orca cards forward from git, pull request and issue state; bring new issue comments to the card |
 | `wk worktree-cleanup [--dry-run]` | Remove this project's worktrees whose branch is merged and whose card has been completed for 14 days; print each worktree and why it was removed or kept |
 | `wk self-merge` | In a project that opted in: merge this branch's pull request when checks, proof and review hold |
 | `wk self-merge record` | Store the proof and review result in the pull request body, for `wk self-merge` to read |
