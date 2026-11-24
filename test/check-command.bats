@@ -44,13 +44,19 @@ allowed() {
   blocked "GIT_TRACE=1 git worktree add ../x" "$work"
   blocked "git fetch; git worktree add --detach ../x" "$work"
   blocked "/usr/bin/git worktree add ../x" "$work"
-  blocked 'cd "$somewhere" && git worktree add ../x' /tmp
+  blocked "git worktree \\
+  add ../x" "$work"
 }
 
 @test "git worktree add passes in a throwaway repo under the temp folder" {
   allowed "git worktree add ../x" /tmp/fixture
   allowed "cd /private/tmp/fixture && git worktree add ../x"
   allowed "git -C /var/folders/ab/T/fixture worktree add ../x"
+}
+
+@test "git worktree add passes in a folder the command does not spell out" {
+  allowed 'cd "$(mktemp -d)" && git init -q && git worktree add ../x' "$work"
+  allowed 'git -C "$fixture" worktree add ../x' "$work"
 }
 
 @test "other worktree commands and words inside quotes or heredocs pass" {
@@ -75,6 +81,8 @@ EOF"
   blocked "git push origin +main"
   blocked "git push origin feature +HEAD:refs/heads/main"
   blocked "git push --force --all"
+  blocked "git push --force \\
+  origin main # as asked"
 }
 
 @test "a force-push without a branch is blocked when the checkout is on main" {
@@ -91,6 +99,8 @@ EOF"
   allowed "git push --force-with-lease origin feature"
   allowed "git push -f origin feature:feature"
   allowed "git push origin +feature main"
+  allowed "git push -f origin feature # never main"
+  allowed "git push --force-with-lease origin feature  # not on main; see #12"
   git -C "$repo" checkout -q -b feature
   allowed "git push --force"
   allowed "git push -f origin HEAD"
@@ -142,6 +152,25 @@ EOF
   blocked "git commit -F $repo/bad.txt" "$HOME"
   allowed "git commit -F good.txt"
   allowed "git commit -F not-written-yet.txt"
+}
+
+@test "a message file without text in its first 4096 bytes passes; git refuses an empty message itself" {
+  printf '%5000s\nwip\n' ' ' > "$repo/spaces.txt"
+  : > "$repo/empty.txt"
+  allowed "git commit -F spaces.txt"
+  allowed "git commit -F empty.txt"
+}
+
+@test "the message shows at most 200 characters of the first line, without control characters" {
+  printf 'wip \033]0;title\007%300s end\n' ' ' > "$repo/odd.txt"
+  blocked "git commit -F odd.txt"
+  [[ "$output" == *'starts with "wip ]0;title '* && "$output" != *$'\033'* && "$output" != *" end"* ]]
+}
+
+@test "a command of more than 12,000 characters passes and the hook says that nothing was checked" {
+  run agent_runs "git worktree add ../x; echo $(printf 'a %.0s' {1..6000})" "$work"
+  is "$status" 1
+  [[ "$output" == "check-command: the command is longer than 12,000 characters, so no rule was checked"* ]]
 }
 
 @test "a commit whose message the command does not spell out passes" {

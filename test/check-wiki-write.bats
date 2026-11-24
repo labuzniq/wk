@@ -39,6 +39,26 @@ allowed() {
   [[ "$output" == *'run the `wiki-ingest` or `wiki-lint` skill'* ]]
 }
 
+@test "the message gives a wiki run that was not marked the command that marks it" {
+  blocked Write "$project/knowledge-base/wiki/learnings.md"
+  mark=$(sed -n 's/.*run `\(mkdir -p [^`]*\)`, then write again.*/\1/p' <<<"$output")
+  is "$mark" "mkdir -p $state/sessions/no-capture && touch $state/sessions/no-capture/abc"
+  eval "$mark"
+  allowed Write "$project/knowledge-base/wiki/learnings.md"
+}
+
+@test "a session id that is not a file name lets the write pass and says so" {
+  mkdir -p "$state/sessions/no-capture"
+  run agent_writes Write "$project/knowledge-base/wiki/learnings.md" "$project" "../../../../.gitconfig"
+  is "$status" 1
+  [[ "$output" == "check-wiki-write: the session id "* ]]
+}
+
+@test "a vault written with a closing slash is covered" {
+  printf 'slug = "demo"\ntype = "code"\nvault = "knowledge-base/"\n' > "$project/.workspace-kit.toml"
+  blocked Write "$project/knowledge-base/wiki/learnings.md"
+}
+
 @test "edits, new pages in new folders and notebooks under wiki/ are blocked" {
   blocked Edit "$project/knowledge-base/wiki/overview.md"
   blocked MultiEdit "$project/knowledge-base/wiki/overview.md"

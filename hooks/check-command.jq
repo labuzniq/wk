@@ -1,29 +1,33 @@
 # Reads the PreToolUse input of a Bash call. Prints one line per git call a rule covers: "<kind> TAB <folder> TAB <value>".
 # Kinds: worktree-add, push (value: the branch a forced push would overwrite), message (value: first line), message-file (value: path).
 # A folder or value the command does not spell out (a variable, a command substitution) is "?": the hook then lets the call pass.
+# It reads the words of the command and runs nothing, so what an earlier part of the same command changes (the branch, a file) is not known.
 
-# Quoted text and heredoc bodies are lifted out of the command first, so words inside a message are never taken for a command.
+# Quoted text, heredoc bodies and comments are lifted out of the command first, so words inside a message are never taken for a command.
 def lift:
   . as $command
   | reduce match(
         "\"\\$\\(\\s*cat\\s*<<-?\\s*['\"]?(?<tag>\\w+)['\"]?[^\\n]*\\n(?<body>(.|\\n)*?)\\n\\s*\\k<tag>\\s*\\)\""
         + "|<<-?\\s*['\"]?(?<plain>\\w+)['\"]?(?<rest>[^\\n]*)\\n(.|\\n)*?\\n\\s*\\k<plain>(?![\\w-])"
         + "|'(?<single>[^']*)'"
-        + "|\"(?<double>(\\\\(.|\\n)|[^\"\\\\])*)\""; "g") as $m
-      ({bare: "", at: 0, texts: []};
+        + "|\"(?<double>(\\\\(.|\\n)|[^\"\\\\])*)\""
+        + "|(?<![^\\s;|&()])#(?<comment>[^\\n]*)"
+        + "|\\\\\\n"; "g") as $m
+      ({bare: [], at: 0, texts: []};
         ($m.captures | map(select(.name != null and .string != null) | {(.name): .string}) | add // {}) as $part
-        | .bare += $command[.at:$m.offset]
+        | .bare += [$command[.at:$m.offset]]
         | .at = $m.offset + $m.length
-        | if $part | has("plain") then .bare += $part.rest
+        | if $part | has("plain") then .bare += [$part.rest]
+          elif ($part | has("comment")) or $part == {} then .bare += [" "]
           else
-            .bare += "\u0001\(.texts | length)\u0001"
+            .bare += ["\u0001\(.texts | length)\u0001"]
             | .texts += [
                 if $part | has("body") then {text: $part.body, known: true}
                 elif $part | has("single") then {text: $part.single, known: true}
                 else {text: ($part.double | gsub("\\\\(?<char>[\"\\\\$`])"; .char)), known: ($part.double | test("(^|[^\\\\])[$`]") | not)}
                 end]
           end)
-  | .bare += $command[.at:];
+  | .bare = (.bare + [$command[.at:]] | join(""));
 
 # A word of the bare command, with its quoted parts put back.
 def word($texts):

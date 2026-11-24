@@ -10,8 +10,10 @@ fields=$(jq -r '[.session_id, .cwd, (.tool_input | .file_path // .notebook_path)
 IFS=$'\t' read -r session_id cwd file <<<"$fields"
 case "$file" in /*) ;; *) file="$cwd/$file" ;; esac
 case "$file" in */wiki/*) ;; *) exit 0 ;; esac
+case "$session_id" in ''|*/*) pass "the session id '$session_id' is not a file name" ;; esac
 # The wiki skills mark their session in their first step; that mark is what lets them write.
-[ ! -f "$HOME/.local/state/workspace-kit/sessions/no-capture/$session_id" ] || exit 0
+marks="$HOME/.local/state/workspace-kit/sessions/no-capture"
+[ ! -f "$marks/$session_id" ] || exit 0
 
 # The file may not exist yet: take the nearest folder that does, with links resolved, as git prints its paths that way.
 folder=$(dirname "$file")
@@ -29,6 +31,7 @@ wiki_of() (
   . "$kit/lib/project.sh" || exit 0
   [ -f "$manifest" ] || exit 0
   vault=$(manifest_value vault)
+  vault=${vault%/}
   [ -n "$vault" ] || exit 0
   case "$vault" in /*) echo "$vault/wiki" ;; *) printf '%s\n' "$root/$vault/wiki" "$primary/$vault/wiki" ;; esac
 )
@@ -37,7 +40,8 @@ while read -r wiki; do
   [ -n "$wiki" ] || continue
   case "$file" in "$wiki"/*)
     inbox="$(dirname "$wiki")/raw/inbox"
-    printf 'Blocked by the workspace kit: %s is a wiki page, and wiki pages are written only by the `wiki-ingest` and `wiki-lint` skills. To record something, write a dated note to %s/<date>-<title>.md; the next ingest brings it into the wiki. To change the wiki now, run the `wiki-ingest` or `wiki-lint` skill.\n' "$file" "$inbox" >&2
+    file=$(printf '%s' "$file" | LC_ALL=C tr -d '\000-\037\177')
+    printf 'Blocked by the workspace kit: %s is a wiki page, and wiki pages are written only by the `wiki-ingest` and `wiki-lint` skills. To record something, write a dated note to %s/<date>-<title>.md; the next ingest brings it into the wiki. To change the wiki now, run the `wiki-ingest` or `wiki-lint` skill. If this session is such a run, its first step did not mark the session: run `mkdir -p %s && touch %s/%s`, then write again.\n' "$file" "$inbox" "$marks" "$marks" "$session_id" >&2
     exit 2 ;;
   esac
 done <<EOF
